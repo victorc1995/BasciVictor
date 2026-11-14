@@ -1,22 +1,30 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyPassword, createSessionToken, COOKIE_NAME } from '@/lib/auth';
+import { verifyCredentials, createSessionToken, COOKIE_NAME } from '@/lib/auth';
 
 export async function POST(req: NextRequest) {
   try {
-    const { password } = await req.json();
+    const { username, password } = await req.json();
 
-    if (!password) {
-      return NextResponse.json({ error: 'Senha não fornecida' }, { status: 400 });
+    if (!username || !password) {
+      return NextResponse.json(
+        { error: 'Por favor, informe o usuário e a senha.' },
+        { status: 400 }
+      );
     }
 
-    if (!verifyPassword(password)) {
-      return NextResponse.json({ error: 'Senha incorreta' }, { status: 401 });
+    if (!verifyCredentials(username, password)) {
+      return NextResponse.json(
+        { error: 'Usuário ou senha incorretos.' },
+        { status: 401 }
+      );
     }
 
     const token = createSessionToken();
-    const response = NextResponse.json({ success: true, message: 'Autenticado com sucesso' });
+    const response = NextResponse.json({
+      success: true,
+      message: 'Autenticado com sucesso',
+    });
 
-    // Define cookie de sessão seguro por 30 dias
     response.cookies.set(COOKIE_NAME, token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
@@ -27,6 +35,9 @@ export async function POST(req: NextRequest) {
 
     return response;
   } catch (err: any) {
-    return NextResponse.json({ error: 'Erro interno ao processar login' }, { status: 500 });
+    return NextResponse.json(
+      { error: 'Erro interno ao processar login' },
+      { status: 500 }
+    );
   }
 }

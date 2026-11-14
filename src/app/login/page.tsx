@@ -2,10 +2,11 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ShieldCheck, Lock, ArrowRight, Eye, EyeOff } from 'lucide-react';
+import { ShieldCheck, User, Lock, ArrowRight, Eye, EyeOff } from 'lucide-react';
 
 export default function LoginPage() {
   const router = useRouter();
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
@@ -13,8 +14,8 @@ export default function LoginPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!password.trim()) {
-      setError('Por favor, informe a senha de acesso.');
+    if (!username.trim() || !password.trim()) {
+      setError('Por favor, preencha o usuário e a senha.');
       return;
     }
 
@@ -25,20 +26,20 @@ export default function LoginPage() {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password }),
+        body: JSON.stringify({ username, password }),
       });
 
       const data = await res.json();
 
       if (!res.ok) {
-        setError(data.error || 'Senha incorreta. Tente novamente.');
+        setError(data.error || 'Usuário ou senha incorretos.');
         return;
       }
 
       router.push('/');
       router.refresh();
     } catch (err: any) {
-      setError('Erro de conexão ao validar senha.');
+      setError('Erro de conexão ao validar credenciais.');
     } finally {
       setIsLoading(false);
     }
@@ -61,6 +62,27 @@ export default function LoginPage() {
         </div>
 
         <form onSubmit={handleSubmit} className="mt-8 space-y-4">
+          {/* Campo Usuário */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
+              Usuário
+            </label>
+            <div className="relative">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500">
+                <User className="w-4 h-4" />
+              </div>
+              <input
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="Ex: familia"
+                autoFocus
+                className="w-full bg-slate-950/80 border border-slate-700/80 rounded-xl pl-10 pr-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
+              />
+            </div>
+          </div>
+
+          {/* Campo Senha */}
           <div>
             <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
               Senha de Acesso
@@ -74,7 +96,6 @@ export default function LoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Digite a senha..."
-                autoFocus
                 className="w-full bg-slate-950/80 border border-slate-700/80 rounded-xl pl-10 pr-10 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
               />
               <button
@@ -103,7 +124,7 @@ export default function LoginPage() {
           </button>
 
           <p className="text-[11px] text-center text-slate-500 pt-2">
-            Acesso protegido por variável de ambiente <code className="text-slate-400">APP_PASSWORD</code>
+            Acesso protegido por usuário e senha
           </p>
         </form>
       </div>
