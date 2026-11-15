@@ -28,6 +28,8 @@ import {
   PlusCircle,
   ExternalLink,
   RefreshCw,
+  RotateCcw,
+  Calendar,
 } from "lucide-react";
 import {
   CartaoBanco,
@@ -64,12 +66,27 @@ import {
   parsearLinhasFatura,
 } from "@/lib/pdf-parser";
 
+const obterMesAtualReal = (): string => {
+  const d = new Date();
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  return `${yyyy}-${mm}`;
+};
+
 type AbaAtiva = "inicio" | "poupanca" | "salarios" | "cartoes" | "contas" | "analise";
 
 export default function DashboardPage() {
   const [aba, setAba] = useState<AbaAtiva>("inicio");
-  const [mesSelecionado, setMesSelecionado] = useState<string>("2026-11");
+  const mesAtualReal = useMemo(() => obterMesAtualReal(), []);
+  const [mesSelecionado, setMesSelecionado] = useState<string>(() => obterMesAtualReal());
   const [carregado, setCarregado] = useState(false);
+
+  const handleSelecionarMes = (novoMes: string) => {
+    if (!novoMes) return;
+    setMesSelecionado(novoMes);
+    setMesVisualizadoContas(novoMes);
+    setMesVisualizadoProjecaoCartao(novoMes);
+  };
 
   // Estados principais (persistidos em LocalStorage + Backup JSON)
   const [contasCasa, setContasCasa] = useState<ContaCasa[]>(INITIAL_CONTAS_CASA);
@@ -1304,15 +1321,6 @@ export default function DashboardPage() {
               </span>
             </button>
 
-            <div className="flex items-center gap-1.5">
-              <label className="text-xs text-slate-300">Mês:</label>
-              <input
-                type="month"
-                value={mesSelecionado}
-                onChange={(e) => setMesSelecionado(e.target.value)}
-                className="bg-slate-800 border border-slate-700 text-white text-sm rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-emerald-400"
-              />
-            </div>
             <button
               onClick={exportarBackup}
               title="Baixar backup dos dados"
@@ -1359,10 +1367,19 @@ export default function DashboardPage() {
         {/* ========================================================= */}
         {aba === "inicio" && (
           <div className="space-y-6">
+            {/* Barra de Seleção de Mês (Mês Atual como Rumo Zero) */}
+            <BarraSeletorMes
+              mesSelecionado={mesSelecionado}
+              mesAtual={mesAtualReal}
+              onSelecionarMes={handleSelecionarMes}
+              subtitulo="Selecione qualquer mês para conferir o extrato geral, salários, faturas e contas daquele período"
+              modoDark={false}
+            />
+
             {/* Barra de Ação Principal */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
               <div>
-                <h2 className="text-lg font-bold text-slate-800">Resumo Geral do Mês ({mesSelecionado})</h2>
+                <h2 className="text-lg font-bold text-slate-800">Resumo Geral do Mês ({formatarMesAnoLabel(mesSelecionado)})</h2>
                 <p className="text-sm text-slate-500">
                   Consolidado automático dos salários líquidos, faturas importadas e contas da casa.
                 </p>
@@ -1452,7 +1469,7 @@ export default function DashboardPage() {
                 <div className="bg-gradient-to-r from-blue-700 to-blue-600 text-white px-6 py-4 flex items-center justify-between">
                   <div>
                     <div className="flex items-center gap-2">
-                      <h3 className="font-bold text-base">Gastos Victor no Mês ({mesSelecionado})</h3>
+                      <h3 className="font-bold text-base">Gastos Victor no Mês ({formatarMesAnoLabel(mesSelecionado)})</h3>
                       <span className="bg-blue-800/70 text-blue-100 text-[10px] font-bold px-2 py-0.5 rounded-full">
                         CBMRS
                       </span>
@@ -1595,7 +1612,7 @@ export default function DashboardPage() {
                 <div className="bg-gradient-to-r from-purple-700 to-purple-600 text-white px-6 py-4 flex items-center justify-between">
                   <div>
                     <div className="flex items-center gap-2">
-                      <h3 className="font-bold text-base">Gastos Letícia no Mês ({mesSelecionado})</h3>
+                      <h3 className="font-bold text-base">Gastos Letícia no Mês ({formatarMesAnoLabel(mesSelecionado)})</h3>
                       <span className="bg-purple-800/70 text-purple-100 text-[10px] font-bold px-2 py-0.5 rounded-full">
                         BMRS
                       </span>
@@ -1741,6 +1758,13 @@ export default function DashboardPage() {
         {/* ========================================================= */}
         {aba === "poupanca" && (
           <div className="space-y-6">
+            <BarraSeletorMes
+              mesSelecionado={mesSelecionado}
+              mesAtual={mesAtualReal}
+              onSelecionarMes={handleSelecionarMes}
+              subtitulo="Extrato contínuo da poupança e previsões futuras (ordem da mais recente para a mais antiga)"
+              modoDark={false}
+            />
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div className="bg-slate-900 text-white p-5 rounded-2xl shadow-sm">
                 <span className="text-xs uppercase text-slate-400 font-semibold">Saldo Atual Confirmado</span>
@@ -2096,6 +2120,13 @@ export default function DashboardPage() {
         {/* ========================================================= */}
         {aba === "salarios" && (
           <div className="space-y-6">
+            <BarraSeletorMes
+              mesSelecionado={mesSelecionado}
+              mesAtual={mesAtualReal}
+              onSelecionarMes={handleSelecionarMes}
+              subtitulo="Consulte o contracheque e as regras salariais de qualquer mês ou volte ao mês atual"
+              modoDark={false}
+            />
             <div className="bg-slate-900 text-white p-5 rounded-2xl shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
                 <div className="flex items-center gap-2">
@@ -2164,6 +2195,15 @@ export default function DashboardPage() {
         {/* ========================================================= */}
         {aba === "cartoes" && (
           <div className="space-y-6">
+            {/* Barra de Seleção de Mês (Mês Atual como Rumo Zero) */}
+            <BarraSeletorMes
+              mesSelecionado={mesSelecionado}
+              mesAtual={mesAtualReal}
+              onSelecionarMes={handleSelecionarMes}
+              subtitulo="Consulte as faturas dos cartões C6 e Sicredi de qualquer mês ou confira o mês corrente"
+              modoDark={false}
+            />
+
             {/* Seletor C6 Bank vs Sicredi + Alternador de Visualização (Fatura Atual vs Projeção) */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
               <div className="flex flex-wrap items-center gap-3">
@@ -2193,7 +2233,7 @@ export default function DashboardPage() {
                         : "text-emerald-800 hover:bg-emerald-100"
                     }`}
                   >
-                    💳 Fatura Atual ({mesSelecionado})
+                    💳 Fatura ({formatarMesAnoLabel(mesSelecionado)})
                   </button>
                   <button
                     onClick={() => setVisaoCartao("projecao")}
@@ -2526,6 +2566,14 @@ export default function DashboardPage() {
         {/* ========================================================= */}
         {aba === "contas" && (
           <div className="space-y-6">
+            {/* Barra de Seleção de Mês (Mês Atual como Rumo Zero) */}
+            <BarraSeletorMes
+              mesSelecionado={mesSelecionado}
+              mesAtual={mesAtualReal}
+              onSelecionarMes={handleSelecionarMes}
+              subtitulo="Defina o mês de referência para detalhar as contas fixas e calcular a projeção de 6 meses"
+              modoDark={false}
+            />
             {/* Header da Aba com explicação */}
             <div className="bg-slate-900 text-white p-6 rounded-2xl shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
@@ -2812,6 +2860,15 @@ export default function DashboardPage() {
         {/* ========================================================= */}
         {aba === "analise" && (
           <div className="space-y-6">
+            {/* Barra de Seleção de Mês (Mês Atual como Rumo Zero) */}
+            <BarraSeletorMes
+              mesSelecionado={mesSelecionado}
+              mesAtual={mesAtualReal}
+              onSelecionarMes={handleSelecionarMes}
+              subtitulo="Demonstrativo contábil detalhado para Victor e Letícia no mês selecionado"
+              modoDark={false}
+            />
+
             {/* Header da Aba 6 */}
             <div className="bg-slate-900 text-white p-6 rounded-2xl shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
@@ -2824,16 +2881,6 @@ export default function DashboardPage() {
                 <p className="text-xs text-slate-400 mt-1">
                   Demonstrativo contábil mês a mês separado para Victor e Letícia: Salário Líquido real vs Contas a Pagar, taxa de comprometimento, saldo individual e projeção dos próximos meses.
                 </p>
-              </div>
-
-              <div className="flex items-center gap-3">
-                <label className="text-xs text-slate-300 font-medium">Mês de Análise:</label>
-                <input
-                  type="month"
-                  value={mesSelecionado}
-                  onChange={(e) => setMesSelecionado(e.target.value)}
-                  className="bg-slate-800 border border-slate-700 text-white text-xs font-bold rounded-xl px-3 py-2 focus:outline-none focus:border-emerald-400"
-                />
               </div>
             </div>
 
@@ -3848,6 +3895,133 @@ export default function DashboardPage() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// Componente de Barra de Seleção de Mês Contextual (Mês Atual como Rumo Zero)
+function BarraSeletorMes({
+  mesSelecionado,
+  mesAtual,
+  onSelecionarMes,
+  subtitulo,
+  modoDark = false,
+}: {
+  mesSelecionado: string;
+  mesAtual: string;
+  onSelecionarMes: (mes: string) => void;
+  subtitulo?: string;
+  modoDark?: boolean;
+}) {
+  const isAtual = mesSelecionado === mesAtual;
+
+  const navegarMes = (delta: number) => {
+    const [anoStr, mesStr] = mesSelecionado.split("-");
+    const ano = parseInt(anoStr, 10);
+    const mes = parseInt(mesStr, 10);
+    const d = new Date(ano, mes - 1 + delta, 1);
+    const novoAno = d.getFullYear();
+    const novoMes = String(d.getMonth() + 1).padStart(2, "0");
+    onSelecionarMes(`${novoAno}-${novoMes}`);
+  };
+
+  return (
+    <div
+      className={`p-3.5 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-3 border transition ${
+        modoDark
+          ? "bg-slate-800/90 border-slate-700/80 text-white shadow-sm"
+          : "bg-white border-slate-200 text-slate-800 shadow-sm"
+      }`}
+    >
+      <div className="flex items-center gap-2.5 flex-wrap">
+        {isAtual ? (
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+            Mês Atual: {formatarMesAnoLabel(mesAtual)} (Rumo Zero)
+          </span>
+        ) : (
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+            <CalendarRange className="w-3.5 h-3.5 text-amber-400" />
+            Visualizando Histórico: {formatarMesAnoLabel(mesSelecionado)}
+          </span>
+        )}
+
+        {subtitulo ? (
+          <span className={`text-xs ${modoDark ? "text-slate-400" : "text-slate-500"}`}>
+            {subtitulo}
+          </span>
+        ) : (
+          <span className={`text-xs ${modoDark ? "text-slate-400" : "text-slate-500"}`}>
+            {isAtual
+              ? "Exibindo dados do mês corrente em tempo real"
+              : "Exibindo dados do mês selecionado"}
+          </span>
+        )}
+      </div>
+
+      <div className="flex items-center gap-2 flex-wrap">
+        {/* Botão de Voltar ao Mês Atual (Aparece quando outro mês é selecionado) */}
+        {!isAtual && (
+          <button
+            type="button"
+            onClick={() => onSelecionarMes(mesAtual)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm transition"
+            title="Voltar instantaneamente para o mês atual em tempo real"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+            Voltar ao Mês Atual ({formatarMesAnoLabel(mesAtual)})
+          </button>
+        )}
+
+        {/* Setas de navegação mês anterior / próximo mês */}
+        <div className="flex items-center bg-slate-900/10 dark:bg-slate-950/40 p-0.5 rounded-xl border border-slate-300/40 dark:border-slate-700">
+          <button
+            type="button"
+            onClick={() => navegarMes(-1)}
+            title="Ver mês anterior"
+            className={`px-2 py-1 text-xs font-bold rounded-lg transition ${
+              modoDark
+                ? "text-slate-300 hover:text-white hover:bg-slate-700"
+                : "text-slate-600 hover:text-slate-900 hover:bg-slate-200"
+            }`}
+          >
+            ◀ Ant.
+          </button>
+          <button
+            type="button"
+            onClick={() => navegarMes(1)}
+            title="Ver próximo mês"
+            className={`px-2 py-1 text-xs font-bold rounded-lg transition ${
+              modoDark
+                ? "text-slate-300 hover:text-white hover:bg-slate-700"
+                : "text-slate-600 hover:text-slate-900 hover:bg-slate-200"
+            }`}
+          >
+            Próx. ▶
+          </button>
+        </div>
+
+        {/* Input / Seletor de Mês específico */}
+        <label
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border cursor-pointer transition ${
+            modoDark
+              ? "bg-slate-900/60 border-slate-700 text-slate-200 hover:border-slate-500"
+              : "bg-slate-50 border-slate-300 text-slate-700 hover:border-slate-400"
+          }`}
+          title="Clique para selecionar qualquer mês ou ano"
+        >
+          <Calendar className="w-3.5 h-3.5 text-slate-400" />
+          <span>Mês:</span>
+          <input
+            type="month"
+            value={mesSelecionado}
+            onChange={(e) => {
+              if (e.target.value) onSelecionarMes(e.target.value);
+            }}
+            className="bg-transparent border-0 text-xs font-bold cursor-pointer focus:outline-none"
+          />
+        </label>
+      </div>
     </div>
   );
 }
