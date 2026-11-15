@@ -44,7 +44,7 @@ import {
   INITIAL_SALARIO_LETICIA,
   INITIAL_SALARIO_VICTOR,
 } from "@/lib/initial-data";
-import { extrairComprasDePDF } from "@/lib/pdf-parser";
+import { extrairComprasDePDF, extrairDadosQualquerPDF, parsearLinhasFatura } from "@/lib/pdf-parser";
 
 type AbaAtiva = "inicio" | "poupanca" | "salarios" | "cartoes" | "contas";
 
@@ -358,49 +358,56 @@ export default function DashboardPage() {
     setModalAberto(false);
   };
 
-  const handleUploadFaturaPDF = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleUploadQualquerPDF = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    setStatusPDF("Lendo PDF da fatura e identificando compras...");
+    setStatusPDF("Lendo arquivo PDF e analisando dados...");
     try {
-      const extraidas = await extrairComprasDePDF(file, bancoPDF, mesSelecionado);
-      if (extraidas.length === 0) {
-        setStatusPDF("Não foi possível detectar linhas automáticas neste PDF (pode ser imagem escaneada). Adicione manualmente na aba Cartões.");
-        return;
+      const dados = await extrairDadosQualquerPDF(file);
+
+      // Preenche os campos do formulário para o usuário
+      if (dados.valor > 0) {
+        setNovoValor(dados.valor.toFixed(2));
       }
-      const comIds: CompraCartao[] = extraidas.map((item, idx) => ({
-        ...item,
-        id: `${Date.now()}-${idx}`,
-      }));
-      setComprasCartao((prev) => [...comIds, ...prev]);
+      if (dados.vencimento) {
+        setNovoVencimento(dados.vencimento);
+      }
+      if (dados.descricao) {
+        setNovaDescricao(dados.descricao);
+      }
+      if (dados.categoria) {
+        setNovaCategoria(dados.categoria);
+      }
 
-      // Também registra um resumo na lista de contas da casa para visibilidade
-      const somaFatura = comIds.reduce((acc, i) => acc + i.valor, 0);
-      setContasCasa((prev) => [
-        {
-          id: `fat-${Date.now()}`,
-          mesAno: mesSelecionado,
-          descricao: `Fatura ${bancoPDF} (${comIds.length} lançamentos via PDF)`,
-          categoria: "Fatura Cartão",
-          valor: somaFatura,
-          vencimento: `${mesSelecionado}-05`,
-          quemPaga: "DIV",
-          pago: false,
-          status: "CONFIRMADO",
-        },
-        ...prev,
-      ]);
+      // Se for fatura de cartão (C6 Bank ou Sicredi), também extrai as compras itemizadas para a aba Cartões
+      if (dados.isFaturaCartao && dados.bancoCartao) {
+        const banco = dados.bancoCartao;
+        const compras = parsearLinhasFatura(dados.textoCompleto, banco, mesSelecionado);
+        if (compras.length > 0) {
+          const comIds: CompraCartao[] = compras.map((item, idx) => ({
+            ...item,
+            id: `${Date.now()}-${idx}`,
+          }));
+          setComprasCartao((prev) => [...comIds, ...prev]);
+          setStatusPDF(
+            `✓ Fatura de Cartão detectada: ${dados.descricao} • R$ ${dados.valor.toFixed(2)} • Vencimento: ${dados.vencimento} • ${compras.length} compras importadas para a Aba Cartões!`
+          );
+        } else {
+          setStatusPDF(
+            `✓ Fatura detectada: ${dados.descricao} • R$ ${dados.valor.toFixed(2)} • Vencimento: ${dados.vencimento}.`
+          );
+        }
+      } else {
+        setStatusPDF(
+          `✓ PDF detectado com sucesso: ${dados.descricao} • R$ ${dados.valor > 0 ? dados.valor.toFixed(2) : "0,00"} • Vencimento: ${dados.vencimento || "Não identificado"}. Os campos foram preenchidos abaixo.`
+        );
+      }
 
-      setStatusPDF(`Sucesso! ${comIds.length} lançamentos importados para a aba Cartões (${bancoPDF}).`);
-      setTimeout(() => {
-        setModalAberto(false);
-        setStatusPDF("");
-        setAba("cartoes");
-        setBancoFiltro(bancoPDF);
-      }, 1500);
+      // Alterna automaticamente para a aba de conferência manual
+      setTipoInclusao("conta");
     } catch (err) {
       console.error(err);
-      setStatusPDF("Erro ao processar o PDF. Verifique se o arquivo não possui senha.");
+      setStatusPDF("Erro ao processar o PDF. Verifique se o arquivo não possui senha ou se é legível.");
     }
   };
 
@@ -1332,7 +1339,7 @@ export default function DashboardPage() {
                   tipoInclusao === "conta" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"
                 }`}
               >
-                Conta da Casa (Luz, Água, etc.)
+                Preenchimento Manual / Conferência
               </button>
               <button
                 type="button"
@@ -1341,9 +1348,16 @@ export default function DashboardPage() {
                   tipoInclusao === "fatura_pdf" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"
                 }`}
               >
-                Importar Fatura Cartão (PDF)
+                📄 Importar Qualquer PDF
               </button>
             </div>
+
+            {statusPDF && (
+              <div className="p-3 rounded-xl bg-blue-50 border border-blue-200 text-blue-900 text-xs flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 text-blue-600 mt-0.5" />
+                <span className="font-medium leading-relaxed">{statusPDF}</span>
+              </div>
+            )}
 
             {tipoInclusao === "conta" ? (
               <form onSubmit={adicionarContaCasa} className="space-y-4">
@@ -1352,15 +1366,16 @@ export default function DashboardPage() {
                   <select
                     value={novaCategoria}
                     onChange={(e) => setNovaCategoria(e.target.value as ContaCasa["categoria"])}
-                    className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm"
+                    className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none"
                   >
-                    <option value="Luz">Luz (Energia Elétrica)</option>
-                    <option value="Água">Água / Saneamento</option>
-                    <option value="Internet">Internet Residencial</option>
-                    <option value="Telefone">Telefone / Celular</option>
-                    <option value="Aluguel">Aluguel / Condomínio</option>
-                    <option value="Carro">Carro / Seguro / IPVA</option>
-                    <option value="Outros">Outros</option>
+                    <option value="Luz">Luz (Energia Elétrica - CEEE / Equatorial / RGE)</option>
+                    <option value="Água">Água / Saneamento (Corsan / DMAE)</option>
+                    <option value="Internet">Internet Residencial (Vero / Fibra)</option>
+                    <option value="Telefone">Telefone / Celular (Vivo / Claro / Tim)</option>
+                    <option value="Aluguel">Aluguel / Condomínio / IPTU</option>
+                    <option value="Carro">Carro / Seguro / IPVA / Financiamento</option>
+                    <option value="Fatura Cartão">Fatura de Cartão (C6 Bank / Sicredi)</option>
+                    <option value="Outros">Outros Boletos</option>
                   </select>
                 </div>
                 <div>
@@ -1371,12 +1386,12 @@ export default function DashboardPage() {
                     placeholder="Ex: Conta de Luz CEEE"
                     value={novaDescricao}
                     onChange={(e) => setNovaDescricao(e.target.value)}
-                    className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm"
+                    className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none"
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-1">Valor (R$)</label>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1">Valor a Pagar (R$)</label>
                     <input
                       type="number"
                       step="0.01"
@@ -1384,16 +1399,16 @@ export default function DashboardPage() {
                       placeholder="0,00"
                       value={novoValor}
                       onChange={(e) => setNovoValor(e.target.value)}
-                      className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm"
+                      className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm font-semibold focus:ring-2 focus:ring-emerald-500 focus:outline-none"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-1">Vencimento</label>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1">Data de Vencimento</label>
                     <input
                       type="date"
                       value={novoVencimento}
                       onChange={(e) => setNovoVencimento(e.target.value)}
-                      className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm"
+                      className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none"
                     />
                   </div>
                 </div>
@@ -1402,42 +1417,37 @@ export default function DashboardPage() {
                   <select
                     value={novoPagador}
                     onChange={(e) => setNovoPagador(e.target.value as Pagador)}
-                    className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm"
+                    className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none"
                   >
                     <option value="DIV">Dividido (50% Victor / 50% Letícia)</option>
                     <option value="VIC">100% Victor</option>
                     <option value="LE">100% Letícia</option>
                   </select>
                 </div>
-                <button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 rounded-xl">
-                  Salvar Conta no Mês
-                </button>
+                <div className="pt-2">
+                  <button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl shadow-md shadow-emerald-600/20 transition">
+                    Salvar Conta no Mês
+                  </button>
+                </div>
               </form>
             ) : (
               <div className="space-y-4">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1">Selecione o Banco da Fatura</label>
-                  <select
-                    value={bancoPDF}
-                    onChange={(e) => setBancoPDF(e.target.value as CartaoBanco)}
-                    className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm"
-                  >
-                    <option value="C6 Bank">C6 Bank</option>
-                    <option value="Sicredi">Sicredi</option>
-                  </select>
+                <div className="text-xs text-slate-500 bg-slate-50 p-3 rounded-xl border border-slate-200">
+                  <p className="font-semibold text-slate-700 mb-1">💡 Leitor Inteligente de Contas & Faturas:</p>
+                  <p>Envie o PDF de qualquer boleto (Luz, Água, Internet, Telefone, Carro, Aluguel ou Fatura de Cartão). O sistema extrai automaticamente o <strong>valor a pagar</strong>, a <strong>data de vencimento</strong> e a <strong>categoria</strong>.</p>
                 </div>
-                <label className="border-2 border-dashed border-slate-300 hover:border-emerald-500 rounded-2xl p-6 flex flex-col items-center justify-center cursor-pointer transition bg-slate-50">
-                  <FileText className="w-8 h-8 text-emerald-600 mb-2" />
-                  <span className="text-sm font-semibold text-slate-700">Clique para selecionar o PDF da fatura</span>
-                  <span className="text-xs text-slate-400 mt-1">Os lançamentos irão direto para a Aba 4 (Cartões)</span>
-                  <input type="file" accept="application/pdf" onChange={handleUploadFaturaPDF} className="hidden" />
+
+                <label className="border-2 border-dashed border-emerald-400 hover:border-emerald-600 bg-emerald-50/40 hover:bg-emerald-50/70 rounded-2xl p-8 flex flex-col items-center justify-center cursor-pointer transition text-center group">
+                  <FileText className="w-10 h-10 text-emerald-600 mb-3 group-hover:scale-110 transition transform" />
+                  <span className="text-sm font-bold text-slate-800">Clique para selecionar qualquer conta em PDF</span>
+                  <span className="text-xs text-slate-500 mt-1 max-w-sm">
+                    Luz (CEEE), Água (Corsan), Vero, Vivo, Claro, Financiamento, Boletos gerais ou Faturas (C6/Sicredi).
+                  </span>
+                  <span className="mt-3 text-[11px] font-semibold text-emerald-700 bg-emerald-100 px-3 py-1 rounded-full">
+                    Extração automática instantânea
+                  </span>
+                  <input type="file" accept="application/pdf" onChange={handleUploadQualquerPDF} className="hidden" />
                 </label>
-                {statusPDF && (
-                  <div className="p-3 rounded-xl bg-blue-50 text-blue-800 text-xs flex items-center gap-2">
-                    <AlertCircle className="w-4 h-4 shrink-0" />
-                    <span>{statusPDF}</span>
-                  </div>
-                )}
               </div>
             )}
           </div>
