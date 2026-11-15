@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
   Wallet,
   PiggyBank,
@@ -27,6 +27,7 @@ import {
   Users,
   PlusCircle,
   ExternalLink,
+  RefreshCw,
 } from "lucide-react";
 import {
   CartaoBanco,
@@ -140,97 +141,122 @@ export default function DashboardPage() {
   const [editVencimento, setEditVencimento] = useState("");
   const [editQuemPaga, setEditQuemPaga] = useState<Pagador>("DIV");
 
-  // Carrega dados salvos localmente
+  // Status de Sincronização Multi-Dispositivo e Servidor Central
+  const [syncStatus, setSyncStatus] = useState<"sincronizado" | "salvando" | "offline" | "carregando">("carregando");
+  const [ultimaSincronizacao, setUltimaSincronizacao] = useState<string | null>(null);
+  const isCarregandoServidorRef = useRef(false);
+
+  // Aplica dados sanitizados aos estados do React
+  const aplicarDados = (parsed: any) => {
+    if (!parsed) return;
+    if (parsed.contasCasa && Array.isArray(parsed.contasCasa)) {
+      let contas = parsed.contasCasa.filter(
+        (c: any) => c.categoria !== "Fatura Cartão"
+      );
+
+      const temAluguelIptuJunto = contas.some(
+        (c: any) =>
+          c.descricao.toLowerCase().includes("aluguel + iptu") ||
+          (c.id === "c1" && c.valor === 1444.35)
+      );
+      if (temAluguelIptuJunto) {
+        contas = contas.filter(
+          (c: any) =>
+            !c.descricao.toLowerCase().includes("aluguel + iptu") && c.id !== "c1"
+        );
+        contas.push(
+          { id: "c-nov-aluguel", mesAno: "2026-11", descricao: "Aluguel Residencial", categoria: "Aluguel", valor: 1329.00, vencimento: "2026-11-05", quemPaga: "DIV", pago: true, status: "CONFIRMADO", recorrente: true },
+          { id: "c-nov-iptu", mesAno: "2026-11", descricao: "IPTU (9/10)", categoria: "Outros", valor: 115.35, vencimento: "2026-11-05", quemPaga: "DIV", pago: true, status: "CONFIRMADO", recorrente: true, parcelada: true, parcelaAtual: 9, totalParcelas: 10 }
+        );
+      }
+
+      contas = contas.map((c: any) => {
+        if (c.categoria === "Aluguel" && (c.valor === 1450 || c.valor === 1444.35 || c.descricao.toLowerCase().includes("aluguel"))) {
+          return {
+            ...c,
+            descricao: "Aluguel Residencial",
+            valor: 1329.00,
+            vencimento: `${c.mesAno}-05`,
+          };
+        }
+        return c;
+      });
+
+      const temIptuDez = contas.some(
+        (c: any) => c.mesAno === "2026-12" && c.descricao.toLowerCase().includes("iptu")
+      );
+      if (!temIptuDez) {
+        contas.push({
+          id: "c-dez-iptu",
+          mesAno: "2026-12",
+          descricao: "IPTU (10/10)",
+          categoria: "Outros",
+          valor: 115.35,
+          vencimento: "2026-12-05",
+          quemPaga: "DIV",
+          pago: false,
+          status: "PREVISTO",
+          recorrente: true,
+          parcelada: true,
+          parcelaAtual: 10,
+          totalParcelas: 10,
+        });
+      }
+
+      const mesesExistentes = new Set(contas.map((c: any) => c.mesAno));
+      const novosMeses = INITIAL_CONTAS_CASA.filter((c) => !mesesExistentes.has(c.mesAno));
+      setContasCasa([...contas, ...novosMeses]);
+    }
+    if (parsed.poupanca && Array.isArray(parsed.poupanca)) {
+      const limpos = parsed.poupanca.map((p: any) => ({
+        ...p,
+        categoria: (p.categoria === "Carro / Creta" || p.categoria === "Carro/Creta") ? "Metas / Projetos" : p.categoria,
+        status: p.status || "CONFIRMADO",
+      }));
+      setPoupanca(limpos);
+    }
+    if (parsed.salVictor) setSalVictor(parsed.salVictor);
+    if (parsed.salLeticia) setSalLeticia(parsed.salLeticia);
+    if (parsed.comprasCartao && Array.isArray(parsed.comprasCartao)) setComprasCartao(parsed.comprasCartao);
+    if (parsed.contracheques) setContracheques(parsed.contracheques);
+    if (parsed.faturasPagas) setFaturasPagas(parsed.faturasPagas);
+    if (parsed.contasExcluidas && Array.isArray(parsed.contasExcluidas)) setContasExcluidas(parsed.contasExcluidas);
+  };
+
+  // Carrega a versão mais recente do servidor (/api/finance-data)
+  const carregarDoServidor = async (silencioso = false) => {
+    try {
+      if (!silencioso) setSyncStatus("carregando");
+      const res = await fetch("/api/finance-data");
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && json.data) {
+          isCarregandoServidorRef.current = true;
+          aplicarDados(json.data);
+          localStorage.setItem("financas_victor_leticia_v3", JSON.stringify(json.data));
+          setSyncStatus("sincronizado");
+          setUltimaSincronizacao(new Date().toLocaleTimeString());
+          return;
+        }
+      }
+      setSyncStatus("offline");
+    } catch (e) {
+      console.warn("Servidor não acessível, mantendo dados locais:", e);
+      setSyncStatus("offline");
+    }
+  };
+
+  // Inicialização com sincronização imediata
   useEffect(() => {
     const saved = localStorage.getItem("financas_victor_leticia_v3");
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        if (parsed.contasCasa) {
-          // Remove contas com categoria "Fatura Cartão" de contasCasa para nunca duplicar com as faturas de comprasCartao
-          let contas = parsed.contasCasa.filter(
-            (c: any) => c.categoria !== "Fatura Cartão"
-          );
-
-          // Separação de Aluguel e IPTU conforme solicitação:
-          // Aluguel: 1329.00 (vencimento dia 05)
-          // IPTU: 115.35 (parc 9 de 10 em Nov, 10 de 10 em Dez) (vencimento dia 05)
-          const temAluguelIptuJunto = contas.some(
-            (c: any) =>
-              c.descricao.toLowerCase().includes("aluguel + iptu") ||
-              (c.id === "c1" && c.valor === 1444.35)
-          );
-          if (temAluguelIptuJunto) {
-            contas = contas.filter(
-              (c: any) =>
-                !c.descricao.toLowerCase().includes("aluguel + iptu") && c.id !== "c1"
-            );
-            contas.push(
-              { id: "c-nov-aluguel", mesAno: "2026-11", descricao: "Aluguel Residencial", categoria: "Aluguel", valor: 1329.00, vencimento: "2026-11-05", quemPaga: "DIV", pago: true, status: "CONFIRMADO", recorrente: true },
-              { id: "c-nov-iptu", mesAno: "2026-11", descricao: "IPTU (9/10)", categoria: "Outros", valor: 115.35, vencimento: "2026-11-05", quemPaga: "DIV", pago: true, status: "CONFIRMADO", recorrente: true, parcelada: true, parcelaAtual: 9, totalParcelas: 10 }
-            );
-          }
-
-          // Atualiza Aluguel de Dezembro e meses seguintes para 1329.00 com vencimento dia 05
-          contas = contas.map((c: any) => {
-            if (c.categoria === "Aluguel" && (c.valor === 1450 || c.valor === 1444.35 || c.descricao.toLowerCase().includes("aluguel"))) {
-              return {
-                ...c,
-                descricao: "Aluguel Residencial",
-                valor: 1329.00,
-                vencimento: `${c.mesAno}-05`,
-              };
-            }
-            return c;
-          });
-
-          // Garante IPTU 10/10 em Dezembro/2026
-          const temIptuDez = contas.some(
-            (c: any) => c.mesAno === "2026-12" && c.descricao.toLowerCase().includes("iptu")
-          );
-          if (!temIptuDez) {
-            contas.push({
-              id: "c-dez-iptu",
-              mesAno: "2026-12",
-              descricao: "IPTU (10/10)",
-              categoria: "Outros",
-              valor: 115.35,
-              vencimento: "2026-12-05",
-              quemPaga: "DIV",
-              pago: false,
-              status: "PREVISTO",
-              recorrente: true,
-              parcelada: true,
-              parcelaAtual: 10,
-              totalParcelas: 10,
-            });
-          }
-
-          // Garante que meses futuros da projeção de 6 meses (ex: Fev, Mar, Abr 2027) estejam presentes
-          const mesesExistentes = new Set(contas.map((c: any) => c.mesAno));
-          const novosMeses = INITIAL_CONTAS_CASA.filter((c) => !mesesExistentes.has(c.mesAno));
-          setContasCasa([...contas, ...novosMeses]);
-        }
-        if (parsed.poupanca) {
-          const limpos = parsed.poupanca.map((p: any) => ({
-            ...p,
-            categoria: (p.categoria === "Carro / Creta" || p.categoria === "Carro/Creta") ? "Metas / Projetos" : p.categoria,
-            status: p.status || "CONFIRMADO",
-          }));
-          setPoupanca(limpos);
-        }
-        if (parsed.salVictor) setSalVictor(parsed.salVictor);
-        if (parsed.salLeticia) setSalLeticia(parsed.salLeticia);
-        if (parsed.comprasCartao) setComprasCartao(parsed.comprasCartao);
-        if (parsed.contracheques) setContracheques(parsed.contracheques);
-        if (parsed.faturasPagas) setFaturasPagas(parsed.faturasPagas);
-        if (parsed.contasExcluidas) setContasExcluidas(parsed.contasExcluidas);
+        aplicarDados(parsed);
       } catch (e) {
-        console.error("Erro ao ler dados salvos v3:", e);
+        console.error("Erro ao ler dados salvos locais v3:", e);
       }
     } else {
-      // Primeira inicialização v3: migra dados de poupança/salários da v2 se houver,
-      // mas aplica a lista oficial completa das faturas C6 e Sicredi de Novembro
       const oldSaved = localStorage.getItem("financas_victor_leticia_v2");
       if (oldSaved) {
         try {
@@ -245,15 +271,74 @@ export default function DashboardPage() {
       setComprasCartao(INITIAL_COMPRAS_CARTAO);
     }
     setCarregado(true);
+
+    // Busca do servidor para garantir sincronismo com outros dispositivos / navegadores
+    carregarDoServidor(true);
+
+    // Revalidação automática ao voltar para a aba ou janela
+    const handleFocus = () => carregarDoServidor(true);
+    window.addEventListener("focus", handleFocus);
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") carregarDoServidor(true);
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+
+    // Polling periódico leve a cada 20s para atualizar se houver alterações de outro aparelho
+    const interval = setInterval(() => {
+      if (document.visibilityState === "visible") carregarDoServidor(true);
+    }, 20000);
+
+    return () => {
+      window.removeEventListener("focus", handleFocus);
+      document.removeEventListener("visibilitychange", handleVisibility);
+      clearInterval(interval);
+    };
   }, []);
 
-  // Salva automaticamente a cada alteração
+  // Salva automaticamente a cada alteração com persistência central no servidor
   useEffect(() => {
     if (!carregado) return;
-    localStorage.setItem(
-      "financas_victor_leticia_v3",
-      JSON.stringify({ contasCasa, poupanca, salVictor, salLeticia, comprasCartao, contracheques, faturasPagas, contasExcluidas })
-    );
+    if (isCarregandoServidorRef.current) {
+      isCarregandoServidorRef.current = false;
+      return;
+    }
+
+    const payload = {
+      contasCasa,
+      poupanca,
+      salVictor,
+      salLeticia,
+      comprasCartao,
+      contracheques,
+      faturasPagas,
+      contasExcluidas,
+    };
+
+    // Salva imediatamente em LocalStorage
+    localStorage.setItem("financas_victor_leticia_v3", JSON.stringify(payload));
+
+    // Debounce de 600ms para salvar no servidor (/api/finance-data)
+    setSyncStatus("salvando");
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch("/api/finance-data", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        if (res.ok) {
+          setSyncStatus("sincronizado");
+          setUltimaSincronizacao(new Date().toLocaleTimeString());
+        } else {
+          setSyncStatus("offline");
+        }
+      } catch (e) {
+        console.warn("Falha ao salvar no servidor central:", e);
+        setSyncStatus("offline");
+      }
+    }, 600);
+
+    return () => clearTimeout(timer);
   }, [contasCasa, poupanca, salVictor, salLeticia, comprasCartao, contracheques, faturasPagas, contasExcluidas, carregado]);
 
   // Cálculos de Salários (Legislação RS 2026)
@@ -510,6 +595,19 @@ export default function DashboardPage() {
       saldoLivreProjetado,
       saldoLivreMetas: saldoLivreConfirmado,
     };
+  }, [poupanca]);
+
+  // Lançamentos Confirmados (Realizado) e Previsões Futuras (ordenados estritamente da data mais recente para a mais antiga)
+  const poupancaRealizados = useMemo(() => {
+    return [...poupanca]
+      .filter((p) => p.status === "CONFIRMADO")
+      .sort((a, b) => b.data.localeCompare(a.data));
+  }, [poupanca]);
+
+  const poupancaPrevistos = useMemo(() => {
+    return [...poupanca]
+      .filter((p) => p.status === "PREVISTO")
+      .sort((a, b) => b.data.localeCompare(a.data));
   }, [poupanca]);
 
   // Projeção dos Próximos 6 Meses para a Aba 5 Contas
@@ -1179,14 +1277,42 @@ export default function DashboardPage() {
             <p className="text-xs text-slate-400">CBMRS / BMRS • Sistema Autônomo Sem Planilha</p>
           </div>
 
-          <div className="flex items-center gap-3">
-            <label className="text-xs text-slate-300">Mês Referência:</label>
-            <input
-              type="month"
-              value={mesSelecionado}
-              onChange={(e) => setMesSelecionado(e.target.value)}
-              className="bg-slate-800 border border-slate-700 text-white text-sm rounded-lg px-3 py-1.5 focus:outline-none focus:border-emerald-400"
-            />
+          <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+            <button
+              onClick={() => carregarDoServidor(false)}
+              title={
+                syncStatus === "sincronizado"
+                  ? `Sincronizado com o servidor central às ${ultimaSincronizacao || "agora"}. Clique para atualizar dados de outros navegadores/dispositivos.`
+                  : syncStatus === "salvando"
+                  ? "Salvando alterações no servidor..."
+                  : "Clique para sincronizar com o servidor"
+              }
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition ${
+                syncStatus === "sincronizado"
+                  ? "bg-emerald-950/50 border-emerald-500/40 text-emerald-300 hover:bg-emerald-900/50"
+                  : syncStatus === "salvando"
+                  ? "bg-amber-950/50 border-amber-500/40 text-amber-300"
+                  : "bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700"
+              }`}
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${syncStatus === "salvando" || syncStatus === "carregando" ? "animate-spin text-amber-400" : "text-emerald-400"}`} />
+              <span className="hidden md:inline">
+                {syncStatus === "sincronizado" && "Sincronizado (Multi-Dispositivo)"}
+                {syncStatus === "salvando" && "Salvando no Servidor..."}
+                {syncStatus === "carregando" && "Sincronizando..."}
+                {syncStatus === "offline" && "Modo Local"}
+              </span>
+            </button>
+
+            <div className="flex items-center gap-1.5">
+              <label className="text-xs text-slate-300">Mês:</label>
+              <input
+                type="month"
+                value={mesSelecionado}
+                onChange={(e) => setMesSelecionado(e.target.value)}
+                className="bg-slate-800 border border-slate-700 text-white text-sm rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-emerald-400"
+              />
+            </div>
             <button
               onClick={exportarBackup}
               title="Baixar backup dos dados"
@@ -1789,30 +1915,45 @@ export default function DashboardPage() {
               </form>
             </div>
 
-            {/* Histórico de Movimentações */}
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-              <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+            {/* ========================================================= */}
+            {/* 1. EXTRATO REALIZADO (CONFIRMADO / EM CONTA)              */}
+            {/* ========================================================= */}
+            <div className="bg-white rounded-2xl shadow-sm border border-emerald-200 overflow-hidden">
+              <div className="px-6 py-4 bg-emerald-50/70 border-b border-emerald-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
-                  <h3 className="font-bold text-slate-800">Extrato da Poupança & Previsões</h3>
-                  <p className="text-xs text-slate-500">Valores com status "Previsão" podem ser confirmados no dia com 1 clique</p>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-bold text-slate-800 text-base">Extrato Realizado (Confirmado)</h3>
+                    <span className="bg-emerald-600 text-white text-[11px] font-bold px-2.5 py-0.5 rounded-full shadow-xs">
+                      {poupancaRealizados.length} {poupancaRealizados.length === 1 ? "lançamento" : "lançamentos"}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Lançamentos efetivados e creditados/debitados na poupança • Ordem: mais recente para o mais antigo
+                  </p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="text-right">
+                    <span className="text-[10px] uppercase font-bold text-emerald-800 tracking-wider">Total Realizado em Conta</span>
+                    <p className="text-lg font-black text-emerald-700 leading-tight">
+                      {formatarMoeda(resumoPoupanca.saldoConfirmado)}
+                    </p>
+                  </div>
                 </div>
               </div>
+
               <div className="divide-y divide-slate-100">
-                {poupanca.map((mov) => {
-                  const isPrevisto = mov.status === "PREVISTO";
-                  return (
-                    <div key={mov.id} className="px-6 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                {poupancaRealizados.length === 0 ? (
+                  <div className="p-8 text-center text-slate-400 text-sm">
+                    Nenhum lançamento confirmado registrado. Adicione um lançamento confirmado acima ou confirme uma previsão pendente.
+                  </div>
+                ) : (
+                  poupancaRealizados.map((mov) => (
+                    <div key={mov.id} className="px-6 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-50/70 transition">
                       <div>
                         <div className="flex items-center gap-2">
                           <p className="text-sm font-semibold text-slate-800">{mov.descricao}</p>
-                          <span
-                            className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
-                              isPrevisto
-                                ? "bg-amber-100 text-amber-800 border-amber-300"
-                                : "bg-emerald-100 text-emerald-800 border-emerald-300"
-                            }`}
-                          >
-                            {isPrevisto ? "⏳ Previsão Futura" : "✓ Confirmado"}
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border bg-emerald-100 text-emerald-800 border-emerald-300">
+                            ✓ Confirmado
                           </span>
                         </div>
                         <div className="flex items-center gap-2 mt-1">
@@ -1825,7 +1966,7 @@ export default function DashboardPage() {
                                 prev.map((p) => (p.id === mov.id ? { ...p, data: novaData } : p))
                               );
                             }}
-                            className="text-xs text-slate-600 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded px-1.5 py-0.5 cursor-pointer"
+                            className="text-xs text-slate-600 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded px-1.5 py-0.5 cursor-pointer font-medium"
                             title="Clique para editar a data deste lançamento"
                           />
                           <span className="text-xs text-slate-400">• {mov.categoria}</span>
@@ -1837,39 +1978,114 @@ export default function DashboardPage() {
                           {mov.tipo === "ENTRADA" ? "+" : "-"} {formatarMoeda(mov.valor)}
                         </span>
 
-                        {/* Botão de confirmação com 1 clique para previsões futuras */}
-                        {isPrevisto ? (
-                          <button
-                            type="button"
-                            onClick={() => alternarStatusPoupanca(mov.id)}
-                            className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-3 py-1.5 rounded-lg shadow-sm transition flex items-center gap-1.5"
-                            title="Confirmar que o valor entrou/saiu na conta hoje"
-                          >
-                            <CheckCircle2 className="w-3.5 h-3.5" />
-                            Confirmar {mov.tipo === "ENTRADA" ? "Entrada" : "Saída"}
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => alternarStatusPoupanca(mov.id)}
-                            className="text-[11px] text-slate-400 hover:text-amber-700 border border-slate-200 hover:border-amber-300 px-2 py-1 rounded-lg"
-                            title="Alternar de volta para previsão"
-                          >
-                            Tornar Previsão
-                          </button>
-                        )}
+                        <button
+                          type="button"
+                          onClick={() => alternarStatusPoupanca(mov.id)}
+                          className="text-[11px] text-slate-500 hover:text-amber-800 hover:bg-amber-50 border border-slate-200 hover:border-amber-300 px-2.5 py-1 rounded-lg transition"
+                          title="Mover de volta para previsão futura"
+                        >
+                          Tornar Previsão
+                        </button>
 
                         <button
                           onClick={() => setPoupanca((prev) => prev.filter((p) => p.id !== mov.id))}
-                          className="text-slate-400 hover:text-rose-600 p-1"
+                          className="text-slate-400 hover:text-rose-600 p-1 rounded hover:bg-rose-50 transition"
                           title="Excluir lançamento"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
                     </div>
-                  );
-                })}
+                  ))
+                )}
+              </div>
+            </div>
+
+            {/* ========================================================= */}
+            {/* 2. PREVISÕES FUTURAS (A REALIZAR / PLANEJADO)             */}
+            {/* ========================================================= */}
+            <div className="bg-white rounded-2xl shadow-sm border border-blue-200 overflow-hidden">
+              <div className="px-6 py-4 bg-blue-50/70 border-b border-blue-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-bold text-slate-800 text-base">Previsões Futuras (A Realizar)</h3>
+                    <span className="bg-blue-600 text-white text-[11px] font-bold px-2.5 py-0.5 rounded-full shadow-xs">
+                      {poupancaPrevistos.length} {poupancaPrevistos.length === 1 ? "previsão" : "previsões"}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Previsões de receitas e saídas futuras • Ordem: mais recente para o mais antigo • Confirme com 1 clique no dia
+                  </p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="text-right">
+                    <span className="text-[10px] uppercase font-bold text-blue-800 tracking-wider">Saldo das Previsões</span>
+                    <p className={`text-lg font-black leading-tight ${resumoPoupanca.saldoPrevistoPendente >= 0 ? "text-blue-700" : "text-rose-600"}`}>
+                      {resumoPoupanca.saldoPrevistoPendente >= 0 ? "+" : ""}{formatarMoeda(resumoPoupanca.saldoPrevistoPendente)}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="divide-y divide-slate-100">
+                {poupancaPrevistos.length === 0 ? (
+                  <div className="p-8 text-center text-slate-400 text-sm">
+                    Nenhuma previsão futura pendente. Adicione previsões futuras pelo formulário acima.
+                  </div>
+                ) : (
+                  poupancaPrevistos.map((mov) => (
+                    <div key={mov.id} className="px-6 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-50/70 transition">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-semibold text-slate-800">{mov.descricao}</p>
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border bg-amber-100 text-amber-800 border-amber-300">
+                            ⏳ Previsão Futura
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 mt-1">
+                          <input
+                            type="date"
+                            value={mov.data}
+                            onChange={(e) => {
+                              const novaData = e.target.value;
+                              setPoupanca((prev) =>
+                                prev.map((p) => (p.id === mov.id ? { ...p, data: novaData } : p))
+                              );
+                            }}
+                            className="text-xs text-slate-600 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded px-1.5 py-0.5 cursor-pointer font-medium"
+                            title="Clique para editar a data desta previsão"
+                          />
+                          <span className="text-xs text-slate-400">• {mov.categoria}</span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-3">
+                        <span className={`font-bold text-base ${mov.tipo === "ENTRADA" ? "text-emerald-600" : "text-rose-600"}`}>
+                          {mov.tipo === "ENTRADA" ? "+" : "-"} {formatarMoeda(mov.valor)}
+                        </span>
+
+                        {/* Botão de confirmação com 1 clique para previsões futuras */}
+                        <button
+                          type="button"
+                          onClick={() => alternarStatusPoupanca(mov.id)}
+                          className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-3 py-1.5 rounded-lg shadow-sm transition flex items-center gap-1.5"
+                          title="Confirmar que o valor entrou/saiu na conta hoje e mover para o Extrato Realizado"
+                        >
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          Confirmar {mov.tipo === "ENTRADA" ? "Entrada" : "Saída"}
+                        </button>
+
+                        <button
+                          onClick={() => setPoupanca((prev) => prev.filter((p) => p.id !== mov.id))}
+                          className="text-slate-400 hover:text-rose-600 p-1 rounded hover:bg-rose-50 transition"
+                          title="Excluir lançamento"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           </div>

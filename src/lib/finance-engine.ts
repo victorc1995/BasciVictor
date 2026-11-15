@@ -23,7 +23,7 @@ export interface MovimentacaoPoupanca {
   descricao: string;
   tipo: "ENTRADA" | "SAIDA";
   valor: number;
-  categoria: "Reserva Emergência" | "Metas / Projetos" | "Diárias Op. Verão" | "Compensação Banrisul (Difa)" | "13º / Extras" | "Outros";
+  categoria: "Reserva Emergência" | "Metas / Projetos" | "Diárias Op. Verão" | "Compensação Banrisul (Difa)" | "13º / Extras" | "Cartão de Crédito" | "Renda Extra" | "Salário / 13º" | "Outros";
   status?: "CONFIRMADO" | "PREVISTO";
 }
 

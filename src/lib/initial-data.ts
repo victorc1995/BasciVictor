@@ -105,12 +105,28 @@ export const INITIAL_CONTAS_CASA: ContaCasa[] = [
 ];
 
 export const INITIAL_POUPANCA: MovimentacaoPoupanca[] = [
-  { id: "p1", data: "2026-10-01", descricao: "Reserva de Emergência Intocável", tipo: "ENTRADA", valor: 5000.00, categoria: "Reserva Emergência", status: "CONFIRMADO" },
-  { id: "p2", data: "2026-10-15", descricao: "Sobra Venda HB20 / Caixa Veículo", tipo: "ENTRADA", valor: 26813.00, categoria: "Metas / Projetos", status: "CONFIRMADO" },
-  { id: "p3", data: "2026-11-10", descricao: "Previsão Diárias Op. Verão (Nov)", tipo: "ENTRADA", valor: 6200.00, categoria: "Diárias Op. Verão", status: "CONFIRMADO" },
-  { id: "p4", data: "2026-11-30", descricao: "Compensação Acordo Banrisul (Difa Nov)", tipo: "SAIDA", valor: 1507.35, categoria: "Compensação Banrisul (Difa)", status: "CONFIRMADO" },
-  { id: "p5", data: "2026-12-02", descricao: "Previsão Diárias Op. Verão (Dez)", tipo: "ENTRADA", valor: 6200.00, categoria: "Diárias Op. Verão", status: "PREVISTO" },
-  { id: "p6", data: "2026-12-30", descricao: "Compensação Acordo Banrisul (Difa Dez)", tipo: "SAIDA", valor: 1507.35, categoria: "Compensação Banrisul (Difa)", status: "PREVISTO" },
+  // Lançamentos Confirmados (Realizado total R$ 58.013,00)
+  { id: "p-conf-8", data: "2026-11-10", descricao: "Diárias Op. Verão (10/11)", tipo: "ENTRADA", valor: 6200.00, categoria: "Diárias Op. Verão", status: "CONFIRMADO" },
+  { id: "p-conf-7", data: "2026-11-05", descricao: "Cartão Letícia", tipo: "SAIDA", valor: 499.00, categoria: "Cartão de Crédito", status: "CONFIRMADO" },
+  { id: "p-conf-6", data: "2026-11-03", descricao: "Diárias Op. Verão (03/11)", tipo: "ENTRADA", valor: 6000.00, categoria: "Diárias Op. Verão", status: "CONFIRMADO" },
+  { id: "p-conf-5", data: "2026-11-03", descricao: "13º Salário 90% Antecipado", tipo: "ENTRADA", valor: 9000.00, categoria: "Salário / 13º", status: "CONFIRMADO" },
+  { id: "p-conf-4", data: "2026-10-20", descricao: "99 Setembro", tipo: "ENTRADA", valor: 318.00, categoria: "Renda Extra", status: "CONFIRMADO" },
+  { id: "p-conf-3", data: "2026-10-15", descricao: "Seguro Ar", tipo: "ENTRADA", valor: 2294.00, categoria: "Metas / Projetos", status: "CONFIRMADO" },
+  { id: "p-conf-2", data: "2026-10-15", descricao: "Sobra Venda HB20 / Caixa Veículo", tipo: "ENTRADA", valor: 29700.00, categoria: "Metas / Projetos", status: "CONFIRMADO" },
+  { id: "p-conf-1", data: "2026-10-01", descricao: "Reserva de Emergência Intocável", tipo: "ENTRADA", valor: 5000.00, categoria: "Reserva Emergência", status: "CONFIRMADO" },
+
+  // Previsões Futuras (A Realizar)
+  { id: "p-prev-11", data: "2027-04-30", descricao: "Compensação Acordo Banrisul (Difa Abr)", tipo: "SAIDA", valor: 1562.01, categoria: "Compensação Banrisul (Difa)", status: "PREVISTO" },
+  { id: "p-prev-10", data: "2027-04-01", descricao: "Previsão Diárias Op. Verão (Abr)", tipo: "ENTRADA", valor: 3030.00, categoria: "Diárias Op. Verão", status: "PREVISTO" },
+  { id: "p-prev-9", data: "2027-03-30", descricao: "Compensação Acordo Banrisul (Difa Mar)", tipo: "SAIDA", valor: 1562.01, categoria: "Compensação Banrisul (Difa)", status: "PREVISTO" },
+  { id: "p-prev-8", data: "2027-03-01", descricao: "Previsão Diárias Op. Verão (Mar)", tipo: "ENTRADA", valor: 6060.00, categoria: "Diárias Op. Verão", status: "PREVISTO" },
+  { id: "p-prev-7", data: "2027-02-28", descricao: "Compensação Acordo Banrisul (Difa Fev)", tipo: "SAIDA", valor: 1562.01, categoria: "Compensação Banrisul (Difa)", status: "PREVISTO" },
+  { id: "p-prev-6", data: "2027-02-01", descricao: "Previsão Diárias Op. Verão (Fev)", tipo: "ENTRADA", valor: 5656.00, categoria: "Diárias Op. Verão", status: "PREVISTO" },
+  { id: "p-prev-5", data: "2027-01-30", descricao: "Compensação Acordo Banrisul (Difa Jan)", tipo: "SAIDA", valor: 1562.01, categoria: "Compensação Banrisul (Difa)", status: "PREVISTO" },
+  { id: "p-prev-4", data: "2027-01-01", descricao: "Previsão Diárias Op. Verão (Jan)", tipo: "ENTRADA", valor: 6262.00, categoria: "Diárias Op. Verão", status: "PREVISTO" },
+  { id: "p-prev-3", data: "2026-12-30", descricao: "Compensação Acordo Banrisul (Difa Dez)", tipo: "SAIDA", valor: 1562.01, categoria: "Compensação Banrisul (Difa)", status: "PREVISTO" },
+  { id: "p-prev-2", data: "2026-12-01", descricao: "Previsão Diárias Op. Verão (Dez)", tipo: "ENTRADA", valor: 6262.00, categoria: "Diárias Op. Verão", status: "PREVISTO" },
+  { id: "p-prev-1", data: "2026-11-30", descricao: "Compensação Acordo Banrisul (Difa Nov)", tipo: "SAIDA", valor: 1562.01, categoria: "Compensação Banrisul (Difa)", status: "PREVISTO" },
 ];
 
 export const INITIAL_COMPRAS_CARTAO: CompraCartao[] = [
