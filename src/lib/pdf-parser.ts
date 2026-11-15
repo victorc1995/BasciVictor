@@ -629,3 +629,80 @@ export function parsearLinhasFatura(
 
   return resultados;
 }
+
+/**
+ * Extrai o valor líquido e titular do PDF de contracheque (militar RS / Banrisul / Procergs / BMRS / CBMRS)
+ */
+export async function extrairDadosContrachequePDF(
+  file: File,
+  titularPadrao?: "Victor" | "Leticia"
+): Promise<{
+  valorLiquido: number;
+  titularDetectado?: "Victor" | "Leticia";
+  competencia?: string;
+  textoCompleto: string;
+}> {
+  const texto = await extrairTextoDePDF(file);
+  const upper = texto.toUpperCase();
+
+  // 1. Detectar titular
+  let titularDetectado: "Victor" | "Leticia" | undefined = titularPadrao;
+  if (upper.includes("VICTOR") || upper.includes("ROQUE")) {
+    titularDetectado = "Victor";
+  } else if (upper.includes("LETICIA") || upper.includes("LETÍCIA") || upper.includes("RIBEIRO")) {
+    titularDetectado = "Leticia";
+  }
+
+  // 2. Detectar competência / mês (ex: 10/2026, 11/2026, OUT/2026)
+  let competencia: string | undefined;
+  const matchComp = texto.match(/(\d{2}\/20\d{2})/);
+  if (matchComp) {
+    competencia = matchComp[1];
+  }
+
+  // 3. Detectar valor líquido
+  let valorLiquido = 0;
+
+  // Regex prioritários para contracheques RS
+  const regexes = [
+    /(?:L[IÍ]QUIDO\s+(?:A\s+RECEBER|TOTAL|FOLHA|PAGAR)|VALOR\s+L[IÍ]QUIDO|TOTAL\s+L[IÍ]QUIDO|VL\.?\s*L[IÍ]QUIDO|VLR\.?\s*L[IÍ]QUIDO)\s*[:\s\-]{0,20}(?:R\$\s*)?(\d{1,3}(?:\.\d{3})*,\d{2})/i,
+    /(?:L[IÍ]QUIDO\s+A\s+RECEBER|TOTAL\s+L[IÍ]QUIDO|VALOR\s+L[IÍ]QUIDO)[\s\S]{1,60}?(?:R\$\s*)?(\d{1,3}(?:\.\d{3})*,\d{2})/i,
+    /(?:TOTAL\s+L[IÍ]QUIDO|L[IÍ]QUIDO)[\s\S]{1,40}?(?:R\$\s*)?(\d{1,3}(?:\.\d{3})*,\d{2})/i,
+  ];
+
+  for (const rx of regexes) {
+    const match = upper.match(rx);
+    if (match && match[1]) {
+      const v = parseFloat(match[1].replace(/\./g, "").replace(",", "."));
+      if (v > 0 && v < 50000) {
+        valorLiquido = v;
+        break;
+      }
+    }
+  }
+
+  // Fallback se não encontrou pelo regex específico: procura por padrão de valor próximo da palavra LIQUIDO
+  if (valorLiquido === 0) {
+    const linhas = texto.split("\n");
+    for (const linha of linhas) {
+      const lUp = linha.toUpperCase();
+      if (lUp.includes("LIQUIDO") || lUp.includes("LÍQUIDO")) {
+        const valMatch = linha.match(/(?:R\$\s*)?(\d{1,3}(?:\.\d{3})*,\d{2})/);
+        if (valMatch) {
+          const v = parseFloat(valMatch[1].replace(/\./g, "").replace(",", "."));
+          if (v > 0 && v < 50000) {
+            valorLiquido = v;
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  return {
+    valorLiquido,
+    titularDetectado,
+    competencia,
+    textoCompleto: texto,
+  };
+}

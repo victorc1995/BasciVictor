@@ -45,7 +45,12 @@ import {
   INITIAL_SALARIO_LETICIA,
   INITIAL_SALARIO_VICTOR,
 } from "@/lib/initial-data";
-import { extrairComprasDePDF, extrairDadosQualquerPDF, parsearLinhasFatura } from "@/lib/pdf-parser";
+import {
+  extrairComprasDePDF,
+  extrairDadosQualquerPDF,
+  extrairDadosContrachequePDF,
+  parsearLinhasFatura,
+} from "@/lib/pdf-parser";
 
 type AbaAtiva = "inicio" | "poupanca" | "salarios" | "cartoes" | "contas";
 
@@ -83,13 +88,19 @@ export default function DashboardPage() {
   const [poupValor, setPoupValor] = useState("");
   const [poupCat, setPoupCat] = useState<MovimentacaoPoupanca["categoria"]>("Metas / Projetos");
 
+  // Formulário Poupança: Compra Parcelada no Cartão Paga com Saldo da Poupança
+  const [compraCartaoPoupDesc, setCompraCartaoPoupDesc] = useState("");
+  const [compraCartaoPoupValor, setCompraCartaoPoupValor] = useState("");
+  const [compraCartaoPoupBanco, setCompraCartaoPoupBanco] = useState<CartaoBanco>("C6 Bank");
+  const [compraCartaoPoupParcelas, setCompraCartaoPoupParcelas] = useState("1");
+  const [compraCartaoPoupData, setCompraCartaoPoupData] = useState<string>(() => new Date().toISOString().slice(0, 10));
+  const [compraCartaoPoupStatus, setCompraCartaoPoupStatus] = useState<"CONFIRMADO" | "PREVISTO">("CONFIRMADO");
+
   // Filtro Cartões
   const [bancoFiltro, setBancoFiltro] = useState<CartaoBanco>("C6 Bank");
 
   // Aba 5 Contas & Projeção 6 Meses
   const [mesVisualizadoContas, setMesVisualizadoContas] = useState<string>("2026-11");
-  const [bancoFaturaConf, setBancoFaturaConf] = useState<CartaoBanco>("C6 Bank");
-  const [valorFaturaConf, setValorFaturaConf] = useState("");
 
   // Modal / Edição de Contas Fixas
   const [contaEditando, setContaEditando] = useState<ContaCasa | null>(null);
@@ -301,13 +312,7 @@ export default function DashboardPage() {
     );
   }, [projecao6Meses, mesVisualizadoContas]);
 
-  const mesConfirmadoInfo = useMemo(() => {
-    return contasCasa.find(
-      (c) => c.mesAno === mesVisualizadoContas && c.categoria === "Fatura Cartão" && c.status === "CONFIRMADO"
-    );
-  }, [contasCasa, mesVisualizadoContas]);
-
-  // Cálculos de Cartões no Mês Selecionado
+  // Cálculos de Cartões no Mês Selecionado (Geral Casal)
   const resumoCartoesMes = useMemo(() => {
     const doMes = comprasCartao.filter((c) => c.mesFatura === mesSelecionado);
     let vicDireto = 0;
@@ -331,6 +336,34 @@ export default function DashboardPage() {
       totalGeralCartoes: vicDireto + leDireto + divTotal,
     };
   }, [comprasCartao, mesSelecionado]);
+
+  // Cálculos do Cartão Selecionado na Aba 4 (C6 Bank ou Sicredi exclusivamente)
+  const resumoCartaoSelecionado = useMemo(() => {
+    const doCartao = comprasCartao.filter(
+      (c) => c.banco === bancoFiltro && c.mesFatura === mesSelecionado
+    );
+    let vicDireto = 0;
+    let leDireto = 0;
+    let divTotal = 0;
+
+    doCartao.forEach((item) => {
+      if (item.quemPaga === "VIC") vicDireto += item.valor;
+      else if (item.quemPaga === "LE") leDireto += item.valor;
+      else divTotal += item.valor;
+    });
+
+    const metadeDiv = divTotal / 2;
+    return {
+      vicDireto,
+      leDireto,
+      divTotal,
+      metadeDiv,
+      totalVictorCartao: vicDireto + metadeDiv,
+      totalLeticiaCartao: leDireto + metadeDiv,
+      totalGeralCartao: vicDireto + leDireto + divTotal,
+      quantidadeItens: doCartao.length,
+    };
+  }, [comprasCartao, bancoFiltro, mesSelecionado]);
 
   // Cálculos de Contas da Casa + Cartões (Gasto Total de Cada Um no Mês)
   const resumoMensalCasal = useMemo(() => {
@@ -527,35 +560,28 @@ export default function DashboardPage() {
     );
   };
 
-  const handleConfirmarFaturaMes = (e: React.FormEvent) => {
+  const adicionarCompraCartaoPoupanca = (e: React.FormEvent) => {
     e.preventDefault();
-    const val = parseFloat(valorFaturaConf.replace(",", "."));
-    if (isNaN(val) || val <= 0) return;
+    const val = parseFloat(compraCartaoPoupValor.replace(",", "."));
+    if (!compraCartaoPoupDesc.trim() || isNaN(val) || val <= 0) return;
 
-    const novaFatura: ContaCasa = {
-      id: `fat-conf-${mesVisualizadoContas}-${bancoFaturaConf}-${Date.now()}`,
-      mesAno: mesVisualizadoContas,
-      descricao: `Fatura ${bancoFaturaConf} (Confirmada)`,
-      categoria: "Fatura Cartão",
+    const parcTexto = compraCartaoPoupParcelas ? ` • ${compraCartaoPoupParcelas}x` : "";
+    const descFormatada = `[Cartão ${compraCartaoPoupBanco}${parcTexto}] ${compraCartaoPoupDesc.trim()}`;
+
+    const novaMov: MovimentacaoPoupanca = {
+      id: `cartao-poup-${Date.now()}`,
+      data: compraCartaoPoupData || new Date().toISOString().slice(0, 10),
+      descricao: descFormatada,
+      tipo: "SAIDA",
       valor: val,
-      vencimento: `${mesVisualizadoContas}-05`,
-      quemPaga: "DIV",
-      pago: false,
-      status: "CONFIRMADO",
+      categoria: "Metas / Projetos",
+      status: compraCartaoPoupStatus,
     };
 
-    setContasCasa((prev) => [
-      novaFatura,
-      ...prev.filter(
-        (c) =>
-          !(
-            c.mesAno === mesVisualizadoContas &&
-            c.categoria === "Fatura Cartão" &&
-            c.descricao.includes(bancoFaturaConf)
-          )
-      ),
-    ]);
-    setValorFaturaConf("");
+    setPoupanca((prev) => [novaMov, ...prev]);
+    setCompraCartaoPoupDesc("");
+    setCompraCartaoPoupValor("");
+    setCompraCartaoPoupParcelas("1");
   };
 
   const alternarPagoConta = (id: string) => {
@@ -711,61 +737,210 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            {/* Lista de Contas da Casa do Mês */}
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-              <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
-                <h3 className="font-bold text-slate-800">Contas da Casa & Faturas Lançadas ({mesSelecionado})</h3>
-                <span className="text-xs text-slate-500">{resumoMensalCasal.contasDoMes.length} itens</span>
-              </div>
-              <div className="divide-y divide-slate-100">
-                {resumoMensalCasal.contasDoMes.length === 0 ? (
-                  <p className="p-6 text-sm text-slate-500 text-center">Nenhuma conta lançada para este mês ainda.</p>
-                ) : (
-                  resumoMensalCasal.contasDoMes.map((conta) => (
-                    <div key={conta.id} className="px-6 py-3.5 flex items-center justify-between hover:bg-slate-50">
-                      <div className="flex items-center gap-3">
-                        <input
-                          type="checkbox"
-                          checked={conta.pago}
-                          onChange={() =>
-                            setContasCasa((prev) =>
-                              prev.map((c) => (c.id === conta.id ? { ...c, pago: !c.pago } : c))
-                            )
-                          }
-                          className="w-4 h-4 accent-emerald-600 rounded"
-                        />
-                        <div>
-                          <p className={`text-sm font-semibold ${conta.pago ? "line-through text-slate-400" : "text-slate-800"}`}>
-                            {conta.descricao}
-                          </p>
-                          <p className="text-xs text-slate-500">
-                            {conta.categoria} • Vencimento: {conta.vencimento} •{" "}
-                            <span className="font-semibold text-slate-700">
-                              {conta.quemPaga === "DIV" ? "Dividido (50/50)" : conta.quemPaga === "VIC" ? "100% Victor" : "100% Letícia"}
-                            </span>
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <span className="font-bold text-slate-800">{formatarMoeda(conta.valor)}</span>
-                        <button
-                          onClick={() => iniciarEdicaoConta(conta)}
-                          className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition"
-                          title="Alterar valor ou detalhes desta conta neste mês"
-                        >
-                          <Pencil className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => deletarConta(conta.id)}
-                          className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
-                          title="Excluir conta deste mês"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+            {/* Divisão de Gastos: Lado Esquerdo (Victor) e Lado Direito (Letícia) */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+              {/* Lado Esquerdo: Gastos Victor no Mês */}
+              <div className="bg-white rounded-2xl shadow-sm border border-blue-200 overflow-hidden">
+                <div className="bg-gradient-to-r from-blue-700 to-blue-600 text-white px-6 py-4 flex items-center justify-between">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-bold text-base">Gastos Victor no Mês ({mesSelecionado})</h3>
+                      <span className="bg-blue-800/70 text-blue-100 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                        CBMRS
+                      </span>
+                    </div>
+                    <p className="text-xs text-blue-100 mt-0.5">
+                      Contas 100% Victor + 50% das contas divididas + Faturas de cartões
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-[10px] uppercase text-blue-200 font-bold block">Total a Pagar</span>
+                    <span className="text-xl font-black text-white">{formatarMoeda(resumoMensalCasal.totalGastoVictor)}</span>
+                  </div>
+                </div>
+
+                {/* Sub-resumo Salário vs Gastos Victor */}
+                <div className="bg-blue-50/70 border-b border-blue-100 px-6 py-2.5 flex items-center justify-between text-xs">
+                  <span className="text-slate-600 font-medium">
+                    Salário Líquido: <strong>{formatarMoeda(salarioVictorFinal)}</strong>
+                  </span>
+                  <span className={resumoMensalCasal.saldoVictor >= 0 ? "text-emerald-700 font-bold" : "text-rose-600 font-bold"}>
+                    Saldo Restante: {formatarMoeda(resumoMensalCasal.saldoVictor)}
+                  </span>
+                </div>
+
+                {/* Card de Faturas de Cartão (C6 Bank + Sicredi) para o Victor */}
+                <div className="p-4 bg-slate-50 border-b border-slate-100">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <CreditCard className="w-4 h-4 text-blue-600" />
+                      <div>
+                        <p className="text-xs font-bold text-slate-800">Faturas de Cartão (C6 & Sicredi)</p>
+                        <p className="text-[11px] text-slate-500">
+                          Exclusivo Victor ({formatarMoeda(resumoCartoesMes.vicDireto)}) + 50% Dividido ({formatarMoeda(resumoCartoesMes.metadeDiv)})
+                        </p>
                       </div>
                     </div>
-                  ))
-                )}
+                    <span className="text-sm font-extrabold text-blue-700">
+                      {formatarMoeda(resumoCartoesMes.totalVictorCartoes)}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Lista de Contas da Casa atribuídas ao Victor */}
+                <div className="divide-y divide-slate-100">
+                  {resumoMensalCasal.contasDoMes.filter((c) => c.quemPaga === "VIC" || c.quemPaga === "DIV").length === 0 ? (
+                    <p className="p-6 text-xs text-slate-400 text-center">Nenhuma conta atribuída ao Victor neste mês.</p>
+                  ) : (
+                    resumoMensalCasal.contasDoMes
+                      .filter((c) => c.quemPaga === "VIC" || c.quemPaga === "DIV")
+                      .map((conta) => {
+                        const valorVictor = conta.quemPaga === "VIC" ? conta.valor : conta.valor / 2;
+                        return (
+                          <div key={conta.id} className="px-6 py-3.5 flex items-center justify-between hover:bg-slate-50 transition">
+                            <div className="flex items-center gap-3">
+                              <input
+                                type="checkbox"
+                                checked={conta.pago}
+                                onChange={() => alternarPagoConta(conta.id)}
+                                className="w-4 h-4 accent-blue-600 rounded"
+                              />
+                              <div>
+                                <p className={`text-sm font-semibold ${conta.pago ? "line-through text-slate-400" : "text-slate-800"}`}>
+                                  {conta.descricao}
+                                </p>
+                                <p className="text-xs text-slate-500">
+                                  {conta.categoria} • Venc: {conta.vencimento.split("-").reverse().join("/")} •{" "}
+                                  <span className={conta.quemPaga === "DIV" ? "text-amber-700 font-semibold" : "text-blue-700 font-semibold"}>
+                                    {conta.quemPaga === "DIV" ? `Dividido (50% de ${formatarMoeda(conta.valor)})` : "100% Victor"}
+                                  </span>
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-slate-800">{formatarMoeda(valorVictor)}</span>
+                              <button
+                                onClick={() => iniciarEdicaoConta(conta)}
+                                className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition"
+                                title="Alterar valor ou detalhes"
+                              >
+                                <Pencil className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => deletarConta(conta.id)}
+                                className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
+                                title="Excluir conta"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })
+                  )}
+                </div>
+              </div>
+
+              {/* Lado Direito: Gastos Letícia no Mês */}
+              <div className="bg-white rounded-2xl shadow-sm border border-purple-200 overflow-hidden">
+                <div className="bg-gradient-to-r from-purple-700 to-purple-600 text-white px-6 py-4 flex items-center justify-between">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-bold text-base">Gastos Letícia no Mês ({mesSelecionado})</h3>
+                      <span className="bg-purple-800/70 text-purple-100 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                        BMRS
+                      </span>
+                    </div>
+                    <p className="text-xs text-purple-100 mt-0.5">
+                      Contas 100% Letícia + 50% das contas divididas + Faturas de cartões
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-[10px] uppercase text-purple-200 font-bold block">Total a Pagar</span>
+                    <span className="text-xl font-black text-white">{formatarMoeda(resumoMensalCasal.totalGastoLeticia)}</span>
+                  </div>
+                </div>
+
+                {/* Sub-resumo Salário vs Gastos Letícia */}
+                <div className="bg-purple-50/70 border-b border-purple-100 px-6 py-2.5 flex items-center justify-between text-xs">
+                  <span className="text-slate-600 font-medium">
+                    Salário Líquido: <strong>{formatarMoeda(salarioLeticiaFinal)}</strong>
+                  </span>
+                  <span className={resumoMensalCasal.saldoLeticia >= 0 ? "text-emerald-700 font-bold" : "text-rose-600 font-bold"}>
+                    Saldo Restante: {formatarMoeda(resumoMensalCasal.saldoLeticia)}
+                  </span>
+                </div>
+
+                {/* Card de Faturas de Cartão (C6 Bank + Sicredi) para Letícia */}
+                <div className="p-4 bg-slate-50 border-b border-slate-100">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <CreditCard className="w-4 h-4 text-purple-600" />
+                      <div>
+                        <p className="text-xs font-bold text-slate-800">Faturas de Cartão (C6 & Sicredi)</p>
+                        <p className="text-[11px] text-slate-500">
+                          Exclusivo Letícia ({formatarMoeda(resumoCartoesMes.leDireto)}) + 50% Dividido ({formatarMoeda(resumoCartoesMes.metadeDiv)})
+                        </p>
+                      </div>
+                    </div>
+                    <span className="text-sm font-extrabold text-purple-700">
+                      {formatarMoeda(resumoCartoesMes.totalLeticiaCartoes)}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Lista de Contas da Casa atribuídas à Letícia */}
+                <div className="divide-y divide-slate-100">
+                  {resumoMensalCasal.contasDoMes.filter((c) => c.quemPaga === "LE" || c.quemPaga === "DIV").length === 0 ? (
+                    <p className="p-6 text-xs text-slate-400 text-center">Nenhuma conta atribuída à Letícia neste mês.</p>
+                  ) : (
+                    resumoMensalCasal.contasDoMes
+                      .filter((c) => c.quemPaga === "LE" || c.quemPaga === "DIV")
+                      .map((conta) => {
+                        const valorLeticia = conta.quemPaga === "LE" ? conta.valor : conta.valor / 2;
+                        return (
+                          <div key={conta.id} className="px-6 py-3.5 flex items-center justify-between hover:bg-slate-50 transition">
+                            <div className="flex items-center gap-3">
+                              <input
+                                type="checkbox"
+                                checked={conta.pago}
+                                onChange={() => alternarPagoConta(conta.id)}
+                                className="w-4 h-4 accent-purple-600 rounded"
+                              />
+                              <div>
+                                <p className={`text-sm font-semibold ${conta.pago ? "line-through text-slate-400" : "text-slate-800"}`}>
+                                  {conta.descricao}
+                                </p>
+                                <p className="text-xs text-slate-500">
+                                  {conta.categoria} • Venc: {conta.vencimento.split("-").reverse().join("/")} •{" "}
+                                  <span className={conta.quemPaga === "DIV" ? "text-amber-700 font-semibold" : "text-purple-700 font-semibold"}>
+                                    {conta.quemPaga === "DIV" ? `Dividido (50% de ${formatarMoeda(conta.valor)})` : "100% Letícia"}
+                                  </span>
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-slate-800">{formatarMoeda(valorLeticia)}</span>
+                              <button
+                                onClick={() => iniciarEdicaoConta(conta)}
+                                className="p-1.5 text-slate-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition"
+                                title="Alterar valor ou detalhes"
+                              >
+                                <Pencil className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => deletarConta(conta.id)}
+                                className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
+                                title="Excluir conta"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -864,6 +1039,91 @@ export default function DashboardPage() {
                 Registrar
               </button>
             </form>
+
+            {/* Formulário Especial: Compra Parcelada no Cartão Paga com Saldo da Poupança */}
+            <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 p-6 rounded-2xl shadow-sm">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
+                <div>
+                  <h3 className="font-bold text-slate-800 text-sm flex items-center gap-2">
+                    <CreditCard className="w-4 h-4 text-amber-600" />
+                    Compensar Compra no Cartão com Saldo da Poupança
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Mesmo comprando no cartão de crédito de forma parcelada, o valor será pago com o dinheiro guardado na poupança.
+                  </p>
+                </div>
+                <span className="text-xs bg-amber-200/80 text-amber-900 font-bold px-3 py-1 rounded-full self-start sm:self-auto">
+                  💳 Débito da Poupança
+                </span>
+              </div>
+
+              <form onSubmit={adicionarCompraCartaoPoupanca} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-3 items-end">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Data da Compra</label>
+                  <input
+                    type="date"
+                    required
+                    value={compraCartaoPoupData}
+                    onChange={(e) => setCompraCartaoPoupData(e.target.value)}
+                    className="w-full border border-amber-300 rounded-xl px-3 py-2 text-sm font-medium bg-white"
+                  />
+                </div>
+                <div className="lg:col-span-2">
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Descrição da Compra</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Ex: Passagens Férias, Celular, Geladeira..."
+                    value={compraCartaoPoupDesc}
+                    onChange={(e) => setCompraCartaoPoupDesc(e.target.value)}
+                    className="w-full border border-amber-300 rounded-xl px-3 py-2 text-sm bg-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Cartão Utilizado</label>
+                  <select
+                    value={compraCartaoPoupBanco}
+                    onChange={(e) => setCompraCartaoPoupBanco(e.target.value as CartaoBanco)}
+                    className="w-full border border-amber-300 rounded-xl px-3 py-2 text-sm font-semibold bg-white"
+                  >
+                    <option value="C6 Bank">C6 Bank</option>
+                    <option value="Sicredi">Sicredi</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Parcelas</label>
+                  <select
+                    value={compraCartaoPoupParcelas}
+                    onChange={(e) => setCompraCartaoPoupParcelas(e.target.value)}
+                    className="w-full border border-amber-300 rounded-xl px-3 py-2 text-sm bg-white"
+                  >
+                    {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 18, 24].map((n) => (
+                      <option key={n} value={n.toString()}>
+                        {n}x {n === 1 ? "(À vista)" : "vezes"}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Valor Total (R$)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    required
+                    placeholder="0,00"
+                    value={compraCartaoPoupValor}
+                    onChange={(e) => setCompraCartaoPoupValor(e.target.value)}
+                    className="w-full border border-amber-300 rounded-xl px-3 py-2 text-sm font-bold text-slate-900 bg-white"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  className="bg-amber-600 hover:bg-amber-700 text-white font-bold py-2 px-4 rounded-xl text-sm transition-colors shadow-sm"
+                >
+                  Abater da Poupança
+                </button>
+              </form>
+            </div>
 
             {/* Histórico de Movimentações */}
             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
@@ -1059,28 +1319,40 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            {/* Cards de Divisão Automática (VIC / LE / DIV 50-50) */}
+            {/* Sub-header identificando o cartão selecionado */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between text-xs text-slate-500 px-1 gap-1">
+              <span>
+                Exibindo cálculos exclusivos para o cartão <strong className="text-slate-800">{bancoFiltro}</strong> ({resumoCartaoSelecionado.quantidadeItens} compras no mês {mesSelecionado})
+              </span>
+              <span>
+                Total da Fatura {bancoFiltro}: <strong className="text-slate-800 font-bold">{formatarMoeda(resumoCartaoSelecionado.totalGeralCartao)}</strong>
+              </span>
+            </div>
+
+            {/* Cards de Divisão do Cartão Selecionado (VIC / LE / DIV 50-50) */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div className="bg-white p-4 rounded-2xl border border-slate-200">
-                <span className="text-xs text-slate-400 font-semibold uppercase">Exclusivo Victor (VIC)</span>
-                <p className="text-xl font-bold text-blue-600 mt-1">{formatarMoeda(resumoCartoesMes.vicDireto)}</p>
+                <span className="text-xs text-slate-400 font-semibold uppercase">Exclusivo Victor ({bancoFiltro})</span>
+                <p className="text-xl font-bold text-blue-600 mt-1">{formatarMoeda(resumoCartaoSelecionado.vicDireto)}</p>
+                <p className="text-[11px] text-slate-400 mt-1">Compras exclusivas do Victor</p>
               </div>
               <div className="bg-white p-4 rounded-2xl border border-slate-200">
-                <span className="text-xs text-slate-400 font-semibold uppercase">Exclusivo Letícia (LE)</span>
-                <p className="text-xl font-bold text-purple-600 mt-1">{formatarMoeda(resumoCartoesMes.leDireto)}</p>
+                <span className="text-xs text-slate-400 font-semibold uppercase">Exclusivo Letícia ({bancoFiltro})</span>
+                <p className="text-xl font-bold text-purple-600 mt-1">{formatarMoeda(resumoCartaoSelecionado.leDireto)}</p>
+                <p className="text-[11px] text-slate-400 mt-1">Compras exclusivas da Letícia</p>
               </div>
               <div className="bg-white p-4 rounded-2xl border border-slate-200">
-                <span className="text-xs text-slate-400 font-semibold uppercase">Dividido (DIV Total)</span>
-                <p className="text-xl font-bold text-amber-600 mt-1">{formatarMoeda(resumoCartoesMes.divTotal)}</p>
-                <p className="text-xs text-slate-500">Metade p/ cada: {formatarMoeda(resumoCartoesMes.metadeDiv)}</p>
+                <span className="text-xs text-slate-400 font-semibold uppercase">Dividido ({bancoFiltro})</span>
+                <p className="text-xl font-bold text-amber-600 mt-1">{formatarMoeda(resumoCartaoSelecionado.divTotal)}</p>
+                <p className="text-xs text-slate-500 mt-1">Metade p/ cada: {formatarMoeda(resumoCartaoSelecionado.metadeDiv)}</p>
               </div>
               <div className="bg-slate-900 text-white p-4 rounded-2xl">
-                <span className="text-xs text-slate-400 font-semibold uppercase">Total Final c/ Rateio</span>
+                <span className="text-xs text-slate-400 font-semibold uppercase">Rateio {bancoFiltro}</span>
                 <p className="text-sm mt-1">
-                  Victor: <strong className="text-emerald-400">{formatarMoeda(resumoCartoesMes.totalVictorCartoes)}</strong>
+                  Victor: <strong className="text-emerald-400">{formatarMoeda(resumoCartaoSelecionado.totalVictorCartao)}</strong>
                 </p>
                 <p className="text-sm">
-                  Letícia: <strong className="text-emerald-400">{formatarMoeda(resumoCartoesMes.totalLeticiaCartoes)}</strong>
+                  Letícia: <strong className="text-emerald-400">{formatarMoeda(resumoCartaoSelecionado.totalLeticiaCartao)}</strong>
                 </p>
               </div>
             </div>
@@ -1250,81 +1522,6 @@ export default function DashboardPage() {
                   );
                 })}
               </div>
-            </div>
-
-            {/* Painel de Confirmação Rápida de Fatura do Mês Selecionado */}
-            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-100">
-                <div>
-                  <h3 className="font-bold text-base text-slate-800 flex items-center gap-2">
-                    <CheckCircle2 className="w-5 h-5 text-emerald-600" />
-                    Confirmar Valor Real da Fatura de {formatarMesAnoLabel(mesVisualizadoContas)}
-                  </h3>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    Quando a fatura do cartão fechar, insira o valor exato para substituir as estimativas deste mês por um valor confirmado.
-                  </p>
-                </div>
-
-                {/* Status do mês visualizado */}
-                {mesConfirmadoInfo ? (
-                  <div className="flex items-center gap-2 bg-emerald-50 text-emerald-800 border border-emerald-200 px-3 py-1.5 rounded-xl text-xs font-bold">
-                    <span>✓ Fatura Fechada Confirmada: {formatarMoeda(mesConfirmadoInfo.valor)}</span>
-                    <button
-                      onClick={() => setContasCasa((prev) => prev.filter((c) => c.id !== mesConfirmadoInfo.id))}
-                      className="text-emerald-700 hover:text-rose-600 ml-2"
-                      title="Excluir confirmação e voltar para estimativa das parcelas"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                ) : (
-                  <span className="bg-amber-50 text-amber-800 border border-amber-200 px-3 py-1.5 rounded-xl text-xs font-semibold">
-                    ⏳ Em Estimativa / Previsão das parcelas
-                  </span>
-                )}
-              </div>
-
-              {/* Formulário de Confirmação */}
-              <form onSubmit={handleConfirmarFaturaMes} className="grid grid-cols-1 sm:grid-cols-4 gap-3 pt-4 items-end">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1">Mês de Vencimento</label>
-                  <input
-                    type="month"
-                    value={mesVisualizadoContas}
-                    onChange={(e) => setMesVisualizadoContas(e.target.value)}
-                    className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm font-semibold text-slate-800"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1">Cartão / Banco</label>
-                  <select
-                    value={bancoFaturaConf}
-                    onChange={(e) => setBancoFaturaConf(e.target.value as CartaoBanco)}
-                    className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm"
-                  >
-                    <option value="C6 Bank">C6 Bank</option>
-                    <option value="Sicredi">Sicredi</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1">Valor Fechado Real (R$)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    required
-                    placeholder="0,00"
-                    value={valorFaturaConf}
-                    onChange={(e) => setValorFaturaConf(e.target.value)}
-                    className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm"
-                  />
-                </div>
-                <button
-                  type="submit"
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 px-4 rounded-xl text-sm transition shadow-sm"
-                >
-                  Confirmar Valor do Mês
-                </button>
-              </form>
             </div>
 
             {/* Listas Detalhadas de Contas e Parcelas do Mês Selecionado */}
@@ -1734,6 +1931,7 @@ function SalarioCard({
 }) {
   const badgeColor = cor === "blue" ? "bg-blue-600" : "bg-purple-600";
   const [inputVal, setInputVal] = useState<string>(() => resultado.totalDisponivelMes.toFixed(2));
+  const [statusPDFContracheque, setStatusPDFContracheque] = useState<string>("");
 
   // Sincroniza o valor sugerido se mudar a simulação e não estiver confirmado
   useEffect(() => {
@@ -1741,6 +1939,29 @@ function SalarioCard({
       setInputVal(resultado.totalDisponivelMes.toFixed(2));
     }
   }, [resultado.totalDisponivelMes, contrachequeConfirmado]);
+
+  const handleUploadContrachequePDF = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setStatusPDFContracheque("Lendo PDF do contracheque...");
+    try {
+      const titularPadrao = cor === "blue" ? "Victor" : "Leticia";
+      const dados = await extrairDadosContrachequePDF(file, titularPadrao);
+      if (dados.valorLiquido > 0) {
+        onConfirmarContracheque(dados.valorLiquido);
+        setStatusPDFContracheque(
+          `✓ Contracheque ${dados.titularDetectado ? `(${dados.titularDetectado})` : ""} confirmado com sucesso: ${formatarMoeda(dados.valorLiquido)}!`
+        );
+      } else {
+        setStatusPDFContracheque(
+          "Não foi possível extrair automaticamente o valor líquido do contracheque. Por favor, digite o valor no campo abaixo."
+        );
+      }
+    } catch (err: any) {
+      console.error(err);
+      setStatusPDFContracheque("Erro ao ler o PDF: " + (err?.message || "Arquivo ilegível ou protegido."));
+    }
+  };
 
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
@@ -1965,20 +2186,58 @@ function SalarioCard({
                   Diferença: {formatarMoeda(valorRealContracheque - resultado.totalDisponivelMes)}
                 </span>
               </div>
-              <button
-                type="button"
-                onClick={onReverterContracheque}
-                className="w-full mt-2 py-1.5 px-3 bg-white hover:bg-slate-100 text-slate-700 font-semibold text-xs rounded-lg border border-slate-300 transition"
-              >
-                Editar ou Voltar para Previsão Calculada
-              </button>
+              <div className="flex gap-2 pt-1">
+                <label className="flex-1 cursor-pointer inline-flex items-center justify-center gap-1.5 py-1.5 px-3 bg-white hover:bg-slate-50 text-slate-700 font-semibold text-xs rounded-lg border border-slate-300 transition text-center shadow-sm">
+                  <FileText className="w-3.5 h-3.5 text-emerald-600" />
+                  Substituir por outro PDF
+                  <input
+                    type="file"
+                    accept="application/pdf"
+                    onChange={handleUploadContrachequePDF}
+                    className="hidden"
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={onReverterContracheque}
+                  className="py-1.5 px-3 bg-white hover:bg-slate-50 text-slate-700 font-semibold text-xs rounded-lg border border-slate-300 transition"
+                >
+                  Voltar p/ Previsão
+                </button>
+              </div>
+              {statusPDFContracheque && (
+                <p className="text-[11px] text-blue-700 font-medium pt-1">{statusPDFContracheque}</p>
+              )}
             </div>
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-3">
               <p className="text-xs text-slate-500">
-                Insira o valor líquido exato que veio no contracheque para confirmar e consolidar o mês.
+                Envie o PDF do contracheque para confirmar o valor líquido automaticamente ou digite o valor abaixo.
               </p>
-              <div className="flex gap-2">
+
+              {/* Botão de Envio de PDF do Contracheque */}
+              <div>
+                <label className="cursor-pointer inline-flex items-center justify-center gap-2 w-full py-2.5 px-4 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-800 font-bold text-xs rounded-xl shadow-sm transition">
+                  <FileText className="w-4 h-4 text-emerald-600" />
+                  📄 Incluir PDF do Contracheque ({cor === "blue" ? "Victor" : "Letícia"})
+                  <input
+                    type="file"
+                    accept="application/pdf"
+                    onChange={handleUploadContrachequePDF}
+                    className="hidden"
+                  />
+                </label>
+              </div>
+
+              {statusPDFContracheque && (
+                <div className="p-2.5 rounded-lg bg-blue-50 border border-blue-200 text-blue-900 text-xs flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-blue-600" />
+                  <span>{statusPDFContracheque}</span>
+                </div>
+              )}
+
+              <div className="flex items-center gap-2 pt-1">
+                <span className="text-[11px] text-slate-400 font-semibold uppercase whitespace-nowrap">Ou digite:</span>
                 <input
                   type="number"
                   step="0.01"
@@ -1995,7 +2254,7 @@ function SalarioCard({
                   }}
                   className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-3.5 py-1.5 rounded-xl transition shadow-sm"
                 >
-                  Confirmar Valor
+                  Confirmar
                 </button>
               </div>
             </div>

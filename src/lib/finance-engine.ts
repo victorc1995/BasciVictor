@@ -246,7 +246,7 @@ export function calcularProjecao6Meses(
 ): ProjecaoMesContas[] {
   const resultado: ProjecaoMesContas[] = [];
 
-  // Contas recorrentes base (ex: mês selecionado)
+  // Contas fixas recorrentes base (ex: mês selecionado)
   const contasBase = contas.filter((c) => c.mesAno === mesBase && c.categoria !== "Fatura Cartão");
 
   for (let offset = 0; offset < 6; offset++) {
@@ -254,21 +254,40 @@ export function calcularProjecao6Meses(
     const label = formatarMesAnoLabel(mesAlvo);
 
     // Contas cadastradas para este mês específico
-    let contasDoMes = contas.filter((c) => c.mesAno === mesAlvo && c.categoria !== "Fatura Cartão");
-    
-    // Se for mês futuro e não houver contas cadastradas, projeta as fixas da base como PREVISTO
-    if (contasDoMes.length === 0 && offset > 0) {
-      contasDoMes = contasBase.map((c) => ({
-        ...c,
-        id: `proj-${mesAlvo}-${c.id}`,
-        mesAno: mesAlvo,
-        vencimento: `${mesAlvo}-${c.vencimento.slice(8) || "10"}`,
-        status: "PREVISTO" as const,
-        pago: false,
-      }));
+    const contasEspecificas = contas.filter((c) => c.mesAno === mesAlvo);
+    let contasDoMes: ContaCasa[] = [];
+
+    if (offset === 0) {
+      contasDoMes = contasEspecificas;
+    } else {
+      // Para meses futuros: projeta as contas base recorrentes
+      const mapeadas = contasBase.map((c) => {
+        const especifica = contasEspecificas.find(
+          (e) =>
+            e.descricao.toLowerCase().trim() === c.descricao.toLowerCase().trim() ||
+            (e.categoria === c.categoria && e.categoria !== "Outros")
+        );
+        if (especifica) return especifica;
+        return {
+          ...c,
+          id: `proj-${mesAlvo}-${c.id}`,
+          mesAno: mesAlvo,
+          vencimento: `${mesAlvo}-${c.vencimento.slice(8) || "10"}`,
+          status: "PREVISTO" as const,
+          pago: false,
+        };
+      });
+
+      // Inclui contas avulsas ou faturas criadas especificamente para este mês futuro
+      const extrasDoMes = contasEspecificas.filter(
+        (e) => !mapeadas.some((m) => m.id === e.id)
+      );
+      contasDoMes = [...mapeadas, ...extrasDoMes];
     }
 
-    const totalContasFixas = contasDoMes.reduce((acc, c) => acc + c.valor, 0);
+    const totalContasFixas = contasDoMes
+      .filter((c) => c.categoria !== "Fatura Cartão")
+      .reduce((acc, c) => acc + c.valor, 0);
 
     // Projeção das parcelas de cartões
     const parcelasProjetadas: ProjecaoMesContas["parcelasProjetadas"] = [];
@@ -317,9 +336,9 @@ export function calcularProjecao6Meses(
       }
     }
 
-    // Se o usuário adicionou explicitamente uma conta de Fatura Cartão confirmada no mês
-    const faturasCadastradas = contas.filter(
-      (c) => c.mesAno === mesAlvo && c.categoria === "Fatura Cartão"
+    // Se o usuário adicionou explicitamente uma conta de Fatura Cartão no mês
+    const faturasCadastradas = contasDoMes.filter(
+      (c) => c.categoria === "Fatura Cartão"
     );
     const hasFaturaConfirmada = faturasCadastradas.length > 0;
     const valorFaturaCadastrada = faturasCadastradas.reduce((acc, f) => acc + f.valor, 0);
