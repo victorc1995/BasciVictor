@@ -29,9 +29,9 @@ export const INITIAL_SALARIO_LETICIA: ParametrosSalario = {
 export const INITIAL_CONTRACHEQUES: Record<string, ContrachequeConfirmadoMes> = {
   "2026-11": {
     victorConfirmado: false,
-    victorValorReal: 5335.99,
+    victorValorReal: 4713.87, // Líquido a Receber Folha Victor
     leticiaConfirmada: false,
-    leticiaValorReal: 4692.89,
+    leticiaValorReal: 4810.73, // Líquido a Receber Folha Letícia
   },
 };
 

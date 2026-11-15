@@ -176,17 +176,17 @@ export default function DashboardPage() {
   // Contracheque do Mês Selecionado (Confirmado vs Previsão)
   const contrachequeMes = contracheques[mesSelecionado] || {
     victorConfirmado: false,
-    victorValorReal: resVictor.totalDisponivelMes,
+    victorValorReal: resVictor.liquidoFolha,
     leticiaConfirmada: false,
-    leticiaValorReal: resLeticia.totalDisponivelMes,
+    leticiaValorReal: resLeticia.liquidoFolha,
   };
 
   const salarioVictorFinal = contrachequeMes.victorConfirmado
-    ? contrachequeMes.victorValorReal
+    ? contrachequeMes.victorValorReal + (salVictor.incluirValeRefeicao ? resVictor.valeRefeicaoIndenizatorio : 0) + resVictor.valorDiarias
     : resVictor.totalDisponivelMes;
 
   const salarioLeticiaFinal = contrachequeMes.leticiaConfirmada
-    ? contrachequeMes.leticiaValorReal
+    ? contrachequeMes.leticiaValorReal + (salLeticia.incluirValeRefeicao ? resLeticia.valeRefeicaoIndenizatorio : 0) + resLeticia.valorDiarias
     : resLeticia.totalDisponivelMes;
 
   const salarioLiquidoTotalCasal = salarioVictorFinal + salarioLeticiaFinal;
@@ -199,7 +199,7 @@ export default function DashboardPage() {
       [mesSelecionado]: {
         ...(prev[mesSelecionado] || {
           leticiaConfirmada: false,
-          leticiaValorReal: resLeticia.totalDisponivelMes,
+          leticiaValorReal: resLeticia.liquidoFolha,
         }),
         victorConfirmado: true,
         victorValorReal: valor,
@@ -213,10 +213,10 @@ export default function DashboardPage() {
       [mesSelecionado]: {
         ...(prev[mesSelecionado] || {
           leticiaConfirmada: false,
-          leticiaValorReal: resLeticia.totalDisponivelMes,
+          leticiaValorReal: resLeticia.liquidoFolha,
         }),
         victorConfirmado: false,
-        victorValorReal: resVictor.totalDisponivelMes,
+        victorValorReal: resVictor.liquidoFolha,
       },
     }));
   };
@@ -227,7 +227,7 @@ export default function DashboardPage() {
       [mesSelecionado]: {
         ...(prev[mesSelecionado] || {
           victorConfirmado: false,
-          victorValorReal: resVictor.totalDisponivelMes,
+          victorValorReal: resVictor.liquidoFolha,
         }),
         leticiaConfirmada: true,
         leticiaValorReal: valor,
@@ -241,10 +241,10 @@ export default function DashboardPage() {
       [mesSelecionado]: {
         ...(prev[mesSelecionado] || {
           victorConfirmado: false,
-          victorValorReal: resVictor.totalDisponivelMes,
+          victorValorReal: resVictor.liquidoFolha,
         }),
         leticiaConfirmada: false,
-        leticiaValorReal: resLeticia.totalDisponivelMes,
+        leticiaValorReal: resLeticia.liquidoFolha,
       },
     }));
   };
@@ -2168,31 +2168,31 @@ function SalarioCard({
   onReverterContracheque: () => void;
 }) {
   const badgeColor = cor === "blue" ? "bg-blue-600" : "bg-purple-600";
-  const [inputVal, setInputVal] = useState<string>(() => resultado.totalDisponivelMes.toFixed(2));
+  const [inputVal, setInputVal] = useState<string>(() => resultado.liquidoFolha.toFixed(2));
   const [statusPDFContracheque, setStatusPDFContracheque] = useState<string>("");
 
   // Sincroniza o valor sugerido se mudar a simulação e não estiver confirmado
   useEffect(() => {
     if (!contrachequeConfirmado) {
-      setInputVal(resultado.totalDisponivelMes.toFixed(2));
+      setInputVal(resultado.liquidoFolha.toFixed(2));
     }
-  }, [resultado.totalDisponivelMes, contrachequeConfirmado]);
+  }, [resultado.liquidoFolha, contrachequeConfirmado]);
 
   const handleUploadContrachequePDF = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    setStatusPDFContracheque("Lendo PDF do contracheque...");
+    setStatusPDFContracheque("Lendo PDF do contracheque militar RS...");
     try {
       const titularPadrao = cor === "blue" ? "Victor" : "Leticia";
       const dados = await extrairDadosContrachequePDF(file, titularPadrao);
       if (dados.valorLiquido > 0) {
         onConfirmarContracheque(dados.valorLiquido);
         setStatusPDFContracheque(
-          `✓ Contracheque ${dados.titularDetectado ? `(${dados.titularDetectado})` : ""} confirmado com sucesso: ${formatarMoeda(dados.valorLiquido)}!`
+          `✓ Contracheque militar ${dados.titularDetectado ? `(${dados.titularDetectado})` : ""} confirmado! Líquido a Receber: ${formatarMoeda(dados.valorLiquido)}`
         );
       } else {
         setStatusPDFContracheque(
-          "Não foi possível extrair automaticamente o valor líquido do contracheque. Por favor, digite o valor no campo abaixo."
+          "Não foi possível extrair automaticamente a linha 'LÍQUIDO A RECEBER' do contracheque. Digite o valor no campo abaixo para confirmar."
         );
       }
     } catch (err: any) {
@@ -2406,24 +2406,54 @@ function SalarioCard({
                   : "bg-amber-100 text-amber-800 border-amber-300"
               }`}
             >
-              {contrachequeConfirmado ? "✓ Confirmado no Mês" : "⏳ Previsão / Simulador"}
+              {contrachequeConfirmado ? "✓ Líquido Confirmado no Mês" : "⏳ Previsão / Simulador"}
             </span>
           </div>
 
           {contrachequeConfirmado ? (
             <div className="space-y-2 bg-emerald-50/60 p-3 rounded-lg border border-emerald-200">
               <div className="flex justify-between items-center">
-                <span className="text-xs text-emerald-900 font-semibold">Valor Real Recebido:</span>
+                <span className="text-xs text-emerald-900 font-semibold">Líquido a Receber Oficial:</span>
                 <span className="text-base font-black text-emerald-700">
                   {formatarMoeda(valorRealContracheque)}
                 </span>
               </div>
               <div className="flex justify-between items-center text-xs text-slate-500 pt-1 border-t border-emerald-200/60">
-                <span>Previsão Calculada: {formatarMoeda(resultado.totalDisponivelMes)}</span>
-                <span className={valorRealContracheque >= resultado.totalDisponivelMes ? "text-emerald-700 font-bold" : "text-rose-600 font-bold"}>
-                  Diferença: {formatarMoeda(valorRealContracheque - resultado.totalDisponivelMes)}
+                <span>Previsão Folha (Líquido): {formatarMoeda(resultado.liquidoFolha)}</span>
+                <span className={valorRealContracheque >= resultado.liquidoFolha ? "text-emerald-700 font-bold" : "text-rose-600 font-bold"}>
+                  Diferença: {formatarMoeda(valorRealContracheque - resultado.liquidoFolha)}
                 </span>
               </div>
+              {(params.incluirValeRefeicao || resultado.valorDiarias > 0) && (
+                <div className="text-[11px] text-slate-600 pt-1.5 border-t border-emerald-200/50 flex flex-col gap-0.5">
+                  <div className="flex justify-between">
+                    <span>Líquido Contracheque:</span>
+                    <span className="font-semibold">{formatarMoeda(valorRealContracheque)}</span>
+                  </div>
+                  {params.incluirValeRefeicao && (
+                    <div className="flex justify-between text-emerald-800">
+                      <span>(+) Auxílio-Refeição (Dia 20):</span>
+                      <span className="font-semibold">+{formatarMoeda(resultado.valeRefeicaoIndenizatorio)}</span>
+                    </div>
+                  )}
+                  {resultado.valorDiarias > 0 && (
+                    <div className="flex justify-between text-emerald-800">
+                      <span>(+) Diárias do Mês:</span>
+                      <span className="font-semibold">+{formatarMoeda(resultado.valorDiarias)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between font-bold text-slate-900 pt-1 border-t border-emerald-200/80">
+                    <span>Total Disponível no Mês:</span>
+                    <span>
+                      {formatarMoeda(
+                        valorRealContracheque +
+                          (params.incluirValeRefeicao ? resultado.valeRefeicaoIndenizatorio : 0) +
+                          resultado.valorDiarias
+                      )}
+                    </span>
+                  </div>
+                </div>
+              )}
               <div className="flex gap-2 pt-1">
                 <label className="flex-1 cursor-pointer inline-flex items-center justify-center gap-1.5 py-1.5 px-3 bg-white hover:bg-slate-50 text-slate-700 font-semibold text-xs rounded-lg border border-slate-300 transition text-center shadow-sm">
                   <FileText className="w-3.5 h-3.5 text-emerald-600" />
@@ -2450,7 +2480,7 @@ function SalarioCard({
           ) : (
             <div className="space-y-3">
               <p className="text-xs text-slate-500">
-                Envie o PDF do contracheque para confirmar o valor líquido automaticamente ou digite o valor abaixo.
+                Envie o PDF do contracheque militar para extrair e confirmar o <strong>Líquido a Receber</strong> oficial, ou digite o valor abaixo:
               </p>
 
               {/* Botão de Envio de PDF do Contracheque */}
@@ -2475,11 +2505,13 @@ function SalarioCard({
               )}
 
               <div className="flex items-center gap-2 pt-1">
-                <span className="text-[11px] text-slate-400 font-semibold uppercase whitespace-nowrap">Ou digite:</span>
+                <span className="text-[11px] text-slate-500 font-semibold uppercase whitespace-nowrap">
+                  Líquido a Receber:
+                </span>
                 <input
                   type="number"
                   step="0.01"
-                  placeholder="0,00"
+                  placeholder={resultado.liquidoFolha.toFixed(2)}
                   value={inputVal}
                   onChange={(e) => setInputVal(e.target.value)}
                   className="flex-1 border border-slate-300 rounded-xl px-3 py-1.5 text-sm font-semibold"
@@ -2492,7 +2524,7 @@ function SalarioCard({
                   }}
                   className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-3.5 py-1.5 rounded-xl transition shadow-sm"
                 >
-                  Confirmar
+                  Confirmar Líquido
                 </button>
               </div>
             </div>

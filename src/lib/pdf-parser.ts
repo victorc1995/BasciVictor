@@ -631,7 +631,8 @@ export function parsearLinhasFatura(
 }
 
 /**
- * Extrai o valor líquido e titular do PDF de contracheque (militar RS / Banrisul / Procergs / BMRS / CBMRS)
+ * Extrai o valor do LÍQUIDO A RECEBER e o titular do PDF de contracheque
+ * (militar RS / Banrisul / Procergs / BMRS / CBMRS / Estado do RS)
  */
 export async function extrairDadosContrachequePDF(
   file: File,
@@ -660,39 +661,92 @@ export async function extrairDadosContrachequePDF(
     competencia = matchComp[1];
   }
 
-  // 3. Detectar valor líquido
+  // 3. Extrair estritamente o LÍQUIDO A RECEBER
   let valorLiquido = 0;
 
-  // Regex prioritários para contracheques RS
-  const regexes = [
-    /(?:L[IÍ]QUIDO\s+(?:A\s+RECEBER|TOTAL|FOLHA|PAGAR)|VALOR\s+L[IÍ]QUIDO|TOTAL\s+L[IÍ]QUIDO|VL\.?\s*L[IÍ]QUIDO|VLR\.?\s*L[IÍ]QUIDO)\s*[:\s\-]{0,20}(?:R\$\s*)?(\d{1,3}(?:\.\d{3})*,\d{2})/i,
-    /(?:L[IÍ]QUIDO\s+A\s+RECEBER|TOTAL\s+L[IÍ]QUIDO|VALOR\s+L[IÍ]QUIDO)[\s\S]{1,60}?(?:R\$\s*)?(\d{1,3}(?:\.\d{3})*,\d{2})/i,
-    /(?:TOTAL\s+L[IÍ]QUIDO|L[IÍ]QUIDO)[\s\S]{1,40}?(?:R\$\s*)?(\d{1,3}(?:\.\d{3})*,\d{2})/i,
-  ];
+  // ESTRATÉGIA 1 (Matemática da Folha de Pagamento): Vencimentos (Bruto) - Descontos = Líquido a Receber
+  // Busca por 3 valores decimais consecutivos onde V1 - V2 = V3
+  const regexValor = /\b(\d{1,3}(?:\.\d{3})*,\d{2})\b/g;
+  const todosValores: { valor: number; index: number }[] = [];
+  let mVal: RegExpExecArray | null;
+  while ((mVal = regexValor.exec(texto)) !== null) {
+    const num = parseFloat(mVal[1].replace(/\./g, "").replace(",", "."));
+    if (num > 0) {
+      todosValores.push({ valor: num, index: mVal.index });
+    }
+  }
 
-  for (const rx of regexes) {
-    const match = upper.match(rx);
-    if (match && match[1]) {
-      const v = parseFloat(match[1].replace(/\./g, "").replace(",", "."));
-      if (v > 0 && v < 50000) {
-        valorLiquido = v;
+  for (let i = 0; i < todosValores.length - 2; i++) {
+    const v1 = todosValores[i].valor;     // Total Vencimentos / Bruto
+    const v2 = todosValores[i + 1].valor; // Total Descontos
+    const v3 = todosValores[i + 2].valor; // Líquido a Receber
+
+    if (v1 > 500 && v2 > 0 && v3 > 500) {
+      if (Math.abs((v1 - v2) - v3) <= 0.08) {
+        valorLiquido = v3;
         break;
       }
     }
   }
 
-  // Fallback se não encontrou pelo regex específico: procura por padrão de valor próximo da palavra LIQUIDO
+  // ESTRATÉGIA 2: Rótulo exato "LÍQUIDO A RECEBER" na mesma linha
+  if (valorLiquido === 0) {
+    const rxMesmaLinha =
+      /(?:VALOR\s+)?L[IÍ]QUIDO\s+(?:A\s+RECEBER|A\s+PAGAR|CREDITAR)[^\d\n\r]{0,35}?(?:R\$\s*)?(\d{1,3}(?:\.\d{3})*,\d{2})/i;
+    const matchML = upper.match(rxMesmaLinha);
+    if (matchML && matchML[1]) {
+      const v = parseFloat(matchML[1].replace(/\./g, "").replace(",", "."));
+      if (v > 0 && v < 50000) {
+        valorLiquido = v;
+      }
+    }
+  }
+
+  // ESTRATÉGIA 3: Linha de totais multi-coluna (ex: VENCIMENTOS ... DESCONTOS ... LIQUIDO A RECEBER)
+  if (valorLiquido === 0) {
+    const matchBloco = upper.match(/L[IÍ]QUIDO\s+(?:A\s+RECEBER|A\s+PAGAR|CREDITAR)[\s\S]{1,100}/);
+    if (matchBloco) {
+      const nums = matchBloco[0].match(/\b(\d{1,3}(?:\.\d{3})*,\d{2})\b/g);
+      if (nums && nums.length > 0) {
+        const candidatos = nums.map((x) => parseFloat(x.replace(/\./g, "").replace(",", ".")));
+        if (candidatos.length >= 3 && Math.abs((candidatos[0] - candidatos[1]) - candidatos[2]) <= 0.08) {
+          valorLiquido = candidatos[2];
+        } else {
+          valorLiquido = candidatos[candidatos.length - 1];
+        }
+      }
+    }
+  }
+
+  // ESTRATÉGIA 4: Procura linha a linha contendo "LIQUIDO A RECEBER"
   if (valorLiquido === 0) {
     const linhas = texto.split("\n");
-    for (const linha of linhas) {
-      const lUp = linha.toUpperCase();
-      if (lUp.includes("LIQUIDO") || lUp.includes("LÍQUIDO")) {
-        const valMatch = linha.match(/(?:R\$\s*)?(\d{1,3}(?:\.\d{3})*,\d{2})/);
-        if (valMatch) {
-          const v = parseFloat(valMatch[1].replace(/\./g, "").replace(",", "."));
+    for (let idx = 0; idx < linhas.length; idx++) {
+      const linha = linhas[idx].toUpperCase();
+      if (
+        linha.includes("LIQUIDO A RECEBER") ||
+        linha.includes("LÍQUIDO A RECEBER") ||
+        linha.includes("LIQUIDO RECEBER") ||
+        linha.includes("VALOR LIQUIDO") ||
+        linha.includes("VALOR LÍQUIDO")
+      ) {
+        const m1 = linha.match(/(?:R\$\s*)?(\d{1,3}(?:\.\d{3})*,\d{2})/);
+        if (m1) {
+          const v = parseFloat(m1[1].replace(/\./g, "").replace(",", "."));
           if (v > 0 && v < 50000) {
             valorLiquido = v;
             break;
+          }
+        }
+        if (idx + 1 < linhas.length) {
+          const prox = linhas[idx + 1].toUpperCase();
+          const m2 = prox.match(/(?:R\$\s*)?(\d{1,3}(?:\.\d{3})*,\d{2})/);
+          if (m2) {
+            const v = parseFloat(m2[1].replace(/\./g, "").replace(",", "."));
+            if (v > 0 && v < 50000) {
+              valorLiquido = v;
+              break;
+            }
           }
         }
       }
