@@ -592,3 +592,101 @@ export function calcularProjecaoParcelasCartao(
 
   return resultado;
 }
+
+export interface StatusVencimento {
+  texto: string;
+  classe: string;
+  diasDiferenca: number;
+  atrasada: boolean;
+  venceHoje: boolean;
+}
+
+export function obterStatusVencimento(vencimento: string, pago: boolean): StatusVencimento {
+  if (pago) {
+    return {
+      texto: "Pago",
+      classe: "bg-emerald-50 text-emerald-700 border-emerald-200",
+      diasDiferenca: 0,
+      atrasada: false,
+      venceHoje: false,
+    };
+  }
+
+  const hoje = new Date();
+  const anoHoje = hoje.getFullYear();
+  const mesHoje = hoje.getMonth();
+  const diaHoje = hoje.getDate();
+  const msHoje = Date.UTC(anoHoje, mesHoje, diaHoje);
+
+  const partes = (vencimento || "").split("-");
+  const anoV = parseInt(partes[0], 10) || anoHoje;
+  const mesV = (parseInt(partes[1], 10) || (mesHoje + 1)) - 1;
+  const diaV = parseInt(partes[2], 10) || diaHoje;
+  const msVenc = Date.UTC(anoV, mesV, diaV);
+
+  const diffMs = msVenc - msHoje;
+  const diffDias = Math.round(diffMs / (1000 * 60 * 60 * 24));
+
+  if (diffDias < 0) {
+    const atraso = Math.abs(diffDias);
+    return {
+      texto: atraso === 1 ? "Atrasada (1 dia)" : `Atrasada (${atraso} dias)`,
+      classe: "bg-rose-100 text-rose-800 border-rose-300 font-bold",
+      diasDiferenca: diffDias,
+      atrasada: true,
+      venceHoje: false,
+    };
+  }
+
+  if (diffDias === 0) {
+    return {
+      texto: "Vence Hoje!",
+      classe: "bg-amber-100 text-amber-900 border-amber-300 font-black animate-pulse",
+      diasDiferenca: 0,
+      atrasada: false,
+      venceHoje: true,
+    };
+  }
+
+  if (diffDias === 1) {
+    return {
+      texto: "Vence Amanhã",
+      classe: "bg-amber-50 text-amber-800 border-amber-200 font-bold",
+      diasDiferenca: 1,
+      atrasada: false,
+      venceHoje: false,
+    };
+  }
+
+  if (diffDias <= 5) {
+    return {
+      texto: `Vence em ${diffDias} dias`,
+      classe: "bg-blue-50 text-blue-800 border-blue-200 font-semibold",
+      diasDiferenca: diffDias,
+      atrasada: false,
+      venceHoje: false,
+    };
+  }
+
+  return {
+    texto: `Vence em ${diffDias} dias`,
+    classe: "bg-slate-50 text-slate-600 border-slate-200 font-medium",
+    diasDiferenca: diffDias,
+    atrasada: false,
+    venceHoje: false,
+  };
+}
+
+export function ordenarContasPorUrgencia<T extends { vencimento: string; pago: boolean }>(
+  itens: T[]
+): T[] {
+  return [...itens].sort((a, b) => {
+    // 1. Contas não pagas sempre vêm antes das pagas (topo da lista)
+    if (a.pago !== b.pago) {
+      return a.pago ? 1 : -1;
+    }
+    // 2. Entre não pagas (ou entre pagas):
+    // Ordena por data de vencimento (as mais antigas / mais próximas de hoje primeiro)
+    return a.vencimento.localeCompare(b.vencimento);
+  });
+}

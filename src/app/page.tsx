@@ -26,6 +26,7 @@ import {
   Car,
   Users,
   PlusCircle,
+  ExternalLink,
 } from "lucide-react";
 import {
   CartaoBanco,
@@ -43,6 +44,8 @@ import {
   calcularProjecaoParcelasCartao,
   formatarMesAnoLabel,
   formatarMoeda,
+  obterStatusVencimento,
+  ordenarContasPorUrgencia,
   somarMeses,
 } from "@/lib/finance-engine";
 import {
@@ -74,6 +77,12 @@ export default function DashboardPage() {
   const [salLeticia, setSalLeticia] = useState<ParametrosSalario>(INITIAL_SALARIO_LETICIA);
   const [comprasCartao, setComprasCartao] = useState<CompraCartao[]>(INITIAL_COMPRAS_CARTAO);
   const [contracheques, setContracheques] = useState<Record<string, ContrachequeConfirmadoMes>>(INITIAL_CONTRACHEQUES);
+  const [faturasPagas, setFaturasPagas] = useState<Record<string, boolean>>({
+    "2026-11-c6-vic": true,
+    "2026-11-c6-le": true,
+    "2026-11-sicredi-vic": true,
+    "2026-11-sicredi-le": true,
+  });
 
   // Modal de inclusão de contas / upload de PDF na Tela Inicial
   const [modalAberto, setModalAberto] = useState(false);
@@ -153,6 +162,7 @@ export default function DashboardPage() {
         if (parsed.salLeticia) setSalLeticia(parsed.salLeticia);
         if (parsed.comprasCartao) setComprasCartao(parsed.comprasCartao);
         if (parsed.contracheques) setContracheques(parsed.contracheques);
+        if (parsed.faturasPagas) setFaturasPagas(parsed.faturasPagas);
       } catch (e) {
         console.error("Erro ao ler dados salvos v3:", e);
       }
@@ -180,9 +190,9 @@ export default function DashboardPage() {
     if (!carregado) return;
     localStorage.setItem(
       "financas_victor_leticia_v3",
-      JSON.stringify({ contasCasa, poupanca, salVictor, salLeticia, comprasCartao, contracheques })
+      JSON.stringify({ contasCasa, poupanca, salVictor, salLeticia, comprasCartao, contracheques, faturasPagas })
     );
-  }, [contasCasa, poupanca, salVictor, salLeticia, comprasCartao, contracheques, carregado]);
+  }, [contasCasa, poupanca, salVictor, salLeticia, comprasCartao, contracheques, faturasPagas, carregado]);
 
   // Cálculos de Salários (Legislação RS 2026)
   const resVictor = useMemo(() => calcularContrachequeRS(salVictor), [salVictor]);
@@ -593,6 +603,193 @@ export default function DashboardPage() {
       saldoLeticia: salarioLeticiaFinal - totalGastoLeticia,
     };
   }, [contasCasa, mesSelecionado, resumoCartoesMes, salarioVictorFinal, salarioLeticiaFinal]);
+
+  // Alterna status pago/pendente de faturas de cartão na Tela Inicial
+  const alternarPagoFatura = (chave: string) => {
+    setFaturasPagas((prev) => ({
+      ...prev,
+      [chave]: !prev[chave],
+    }));
+  };
+
+  // Lista unificada de Contas & Faturas do Victor para Tela Inicial (ordenada por urgência em tempo real)
+  const contasExibicaoVictor = useMemo(() => {
+    const itens: {
+      id: string;
+      isFaturaCartao: boolean;
+      banco?: CartaoBanco;
+      descricao: string;
+      subtitulo?: string;
+      categoria: string;
+      vencimento: string;
+      valor: number;
+      quemPaga: Pagador;
+      pago: boolean;
+      chaveFatura?: string;
+      contaOriginal?: ContaCasa;
+    }[] = [];
+
+    // 1. Fatura C6 Bank Victor (se houver valor no mês)
+    const valC6Vic = resumoCartoesMes.c6Vic + resumoCartoesMes.c6Div / 2;
+    if (valC6Vic > 0) {
+      const chave = `${mesSelecionado}-c6-vic`;
+      itens.push({
+        id: `fatura-c6-${mesSelecionado}-vic`,
+        isFaturaCartao: true,
+        banco: "C6 Bank",
+        descricao: "Fatura C6 Bank",
+        subtitulo:
+          resumoCartoesMes.c6Div > 0
+            ? `Exclusivo: ${formatarMoeda(resumoCartoesMes.c6Vic)} • 50% Dividido: ${formatarMoeda(resumoCartoesMes.c6Div / 2)}`
+            : "100% Victor",
+        categoria: "Fatura Cartão",
+        vencimento: `${mesSelecionado}-01`,
+        valor: valC6Vic,
+        quemPaga: "VIC",
+        pago: !!faturasPagas[chave],
+        chaveFatura: chave,
+      });
+    }
+
+    // 2. Fatura Sicredi Victor (se houver valor no mês)
+    const valSicrediVic = resumoCartoesMes.sicrediVic + resumoCartoesMes.sicrediDiv / 2;
+    if (valSicrediVic > 0) {
+      const chave = `${mesSelecionado}-sicredi-vic`;
+      itens.push({
+        id: `fatura-sicredi-${mesSelecionado}-vic`,
+        isFaturaCartao: true,
+        banco: "Sicredi",
+        descricao: "Fatura Sicredi",
+        subtitulo:
+          resumoCartoesMes.sicrediDiv > 0
+            ? `Exclusivo: ${formatarMoeda(resumoCartoesMes.sicrediVic)} • 50% Dividido: ${formatarMoeda(resumoCartoesMes.sicrediDiv / 2)}`
+            : "100% Victor",
+        categoria: "Fatura Cartão",
+        vencimento: `${mesSelecionado}-03`,
+        valor: valSicrediVic,
+        quemPaga: "VIC",
+        pago: !!faturasPagas[chave],
+        chaveFatura: chave,
+      });
+    }
+
+    // 3. Contas da Casa do Victor (100% ou 50% divididas)
+    resumoMensalCasal.contasDoMes
+      .filter((c) => c.quemPaga === "VIC" || c.quemPaga === "DIV")
+      .forEach((c) => {
+        const valorVic = c.quemPaga === "VIC" ? c.valor : c.valor / 2;
+        itens.push({
+          id: c.id,
+          isFaturaCartao: false,
+          descricao: c.descricao,
+          subtitulo:
+            c.quemPaga === "DIV"
+              ? `Dividido (50% de ${formatarMoeda(c.valor)})`
+              : "100% Victor",
+          categoria: c.categoria,
+          vencimento: c.vencimento,
+          valor: valorVic,
+          quemPaga: c.quemPaga,
+          pago: c.pago,
+          contaOriginal: c,
+        });
+      });
+
+    // Ordenação dinâmica por urgência (tempo real: não pagas no topo, vencimento mais perto primeiro)
+    return ordenarContasPorUrgencia(itens);
+  }, [mesSelecionado, resumoCartoesMes, resumoMensalCasal.contasDoMes, faturasPagas]);
+
+  // Lista unificada de Contas & Faturas da Letícia para Tela Inicial (ordenada por urgência em tempo real)
+  const contasExibicaoLeticia = useMemo(() => {
+    const itens: {
+      id: string;
+      isFaturaCartao: boolean;
+      banco?: CartaoBanco;
+      descricao: string;
+      subtitulo?: string;
+      categoria: string;
+      vencimento: string;
+      valor: number;
+      quemPaga: Pagador;
+      pago: boolean;
+      chaveFatura?: string;
+      contaOriginal?: ContaCasa;
+    }[] = [];
+
+    // 1. Fatura C6 Bank Letícia
+    const valC6Le = resumoCartoesMes.c6Le + resumoCartoesMes.c6Div / 2;
+    if (valC6Le > 0) {
+      const chave = `${mesSelecionado}-c6-le`;
+      itens.push({
+        id: `fatura-c6-${mesSelecionado}-le`,
+        isFaturaCartao: true,
+        banco: "C6 Bank",
+        descricao: "Fatura C6 Bank",
+        subtitulo:
+          resumoCartoesMes.c6Div > 0
+            ? `Exclusivo: ${formatarMoeda(resumoCartoesMes.c6Le)} • 50% Dividido: ${formatarMoeda(resumoCartoesMes.c6Div / 2)}`
+            : "100% Letícia",
+        categoria: "Fatura Cartão",
+        vencimento: `${mesSelecionado}-01`,
+        valor: valC6Le,
+        quemPaga: "LE",
+        pago: !!faturasPagas[chave],
+        chaveFatura: chave,
+      });
+    }
+
+    // 2. Fatura Sicredi Letícia
+    const valSicrediLe = resumoCartoesMes.sicrediLe + resumoCartoesMes.sicrediDiv / 2;
+    if (valSicrediLe > 0) {
+      const chave = `${mesSelecionado}-sicredi-le`;
+      itens.push({
+        id: `fatura-sicredi-${mesSelecionado}-le`,
+        isFaturaCartao: true,
+        banco: "Sicredi",
+        descricao: "Fatura Sicredi",
+        subtitulo:
+          resumoCartoesMes.sicrediDiv > 0
+            ? `Exclusivo: ${formatarMoeda(resumoCartoesMes.sicrediLe)} • 50% Dividido: ${formatarMoeda(resumoCartoesMes.sicrediDiv / 2)}`
+            : "100% Letícia",
+        categoria: "Fatura Cartão",
+        vencimento: `${mesSelecionado}-03`,
+        valor: valSicrediLe,
+        quemPaga: "LE",
+        pago: !!faturasPagas[chave],
+        chaveFatura: chave,
+      });
+    }
+
+    // 3. Contas da Casa da Letícia (100% ou 50% divididas)
+    resumoMensalCasal.contasDoMes
+      .filter((c) => c.quemPaga === "LE" || c.quemPaga === "DIV")
+      .forEach((c) => {
+        const valorLe = c.quemPaga === "LE" ? c.valor : c.valor / 2;
+        itens.push({
+          id: c.id,
+          isFaturaCartao: false,
+          descricao: c.descricao,
+          subtitulo:
+            c.quemPaga === "DIV"
+              ? `Dividido (50% de ${formatarMoeda(c.valor)})`
+              : "100% Letícia",
+          categoria: c.categoria,
+          vencimento: c.vencimento,
+          valor: valorLe,
+          quemPaga: c.quemPaga,
+          pago: c.pago,
+          contaOriginal: c,
+        });
+      });
+
+    // Ordenação dinâmica por urgência (tempo real: não pagas no topo, vencimento mais perto primeiro)
+    return ordenarContasPorUrgencia(itens);
+  }, [mesSelecionado, resumoCartoesMes, resumoMensalCasal.contasDoMes, faturasPagas]);
+
+  // Contas fixas da Aba 5 ordenadas por urgência em tempo real (não pagas no topo)
+  const contasOrdenadasAba5 = useMemo(() => {
+    return ordenarContasPorUrgencia(dadosMesVisualizado.contas);
+  }, [dadosMesVisualizado.contas]);
 
   // Handlers
   const adicionarContaCasa = (e: React.FormEvent) => {
@@ -1067,74 +1264,102 @@ export default function DashboardPage() {
                   </span>
                 </div>
 
-                {/* Card de Faturas de Cartão (C6 Bank + Sicredi) para o Victor */}
-                <div className="p-4 bg-slate-50 border-b border-slate-100">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <CreditCard className="w-4 h-4 text-blue-600" />
-                      <div>
-                        <p className="text-xs font-bold text-slate-800">Faturas de Cartão (C6 & Sicredi)</p>
-                        <p className="text-[11px] text-slate-500">
-                          Exclusivo Victor ({formatarMoeda(resumoCartoesMes.vicDireto)}) + 50% Dividido ({formatarMoeda(resumoCartoesMes.metadeDiv)})
-                        </p>
-                      </div>
-                    </div>
-                    <span className="text-sm font-extrabold text-blue-700">
-                      {formatarMoeda(resumoCartoesMes.totalVictorCartoes)}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Lista de Contas da Casa atribuídas ao Victor */}
+                {/* Lista Unificada de Contas & Faturas do Victor (Ordenadas por Urgência em Tempo Real) */}
                 <div className="divide-y divide-slate-100">
-                  {resumoMensalCasal.contasDoMes.filter((c) => c.quemPaga === "VIC" || c.quemPaga === "DIV").length === 0 ? (
+                  {contasExibicaoVictor.length === 0 ? (
                     <p className="p-6 text-xs text-slate-400 text-center">Nenhuma conta atribuída ao Victor neste mês.</p>
                   ) : (
-                    resumoMensalCasal.contasDoMes
-                      .filter((c) => c.quemPaga === "VIC" || c.quemPaga === "DIV")
-                      .map((conta) => {
-                        const valorVictor = conta.quemPaga === "VIC" ? conta.valor : conta.valor / 2;
-                        return (
-                          <div key={conta.id} className="px-6 py-3.5 flex items-center justify-between hover:bg-slate-50 transition">
-                            <div className="flex items-center gap-3">
-                              <input
-                                type="checkbox"
-                                checked={conta.pago}
-                                onChange={() => alternarPagoConta(conta.id)}
-                                className="w-4 h-4 accent-blue-600 rounded"
-                              />
-                              <div>
-                                <p className={`text-sm font-semibold ${conta.pago ? "line-through text-slate-400" : "text-slate-800"}`}>
-                                  {conta.descricao}
+                    contasExibicaoVictor.map((item) => {
+                      const statusVenc = obterStatusVencimento(item.vencimento, item.pago);
+                      return (
+                        <div
+                          key={item.id}
+                          className={`px-6 py-3.5 flex items-center justify-between transition ${
+                            item.pago ? "bg-slate-50/40 opacity-75" : "hover:bg-slate-50"
+                          }`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <input
+                              type="checkbox"
+                              checked={item.pago}
+                              onChange={() => {
+                                if (item.isFaturaCartao && item.chaveFatura) {
+                                  alternarPagoFatura(item.chaveFatura);
+                                } else {
+                                  alternarPagoConta(item.id);
+                                }
+                              }}
+                              className="w-4 h-4 accent-blue-600 rounded cursor-pointer"
+                              title={item.pago ? "Marcar como pendente" : "Marcar como pago"}
+                            />
+                            <div>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                {item.isFaturaCartao && (
+                                  <CreditCard className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                                )}
+                                <p
+                                  className={`text-sm font-semibold ${
+                                    item.pago ? "line-through text-slate-400" : "text-slate-800"
+                                  }`}
+                                >
+                                  {item.descricao}
                                 </p>
-                                <p className="text-xs text-slate-500">
-                                  {conta.categoria} • Venc: {conta.vencimento.split("-").reverse().join("/")} •{" "}
-                                  <span className={conta.quemPaga === "DIV" ? "text-amber-700 font-semibold" : "text-blue-700 font-semibold"}>
-                                    {conta.quemPaga === "DIV" ? `Dividido (50% de ${formatarMoeda(conta.valor)})` : "100% Victor"}
-                                  </span>
-                                </p>
+                                <span
+                                  className={`text-[10px] px-2 py-0.5 rounded-full border ${statusVenc.classe}`}
+                                >
+                                  {statusVenc.texto}
+                                </span>
                               </div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <span className="font-bold text-slate-800">{formatarMoeda(valorVictor)}</span>
-                              <button
-                                onClick={() => iniciarEdicaoConta(conta)}
-                                className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition"
-                                title="Alterar valor ou detalhes"
-                              >
-                                <Pencil className="w-4 h-4" />
-                              </button>
-                              <button
-                                onClick={() => deletarConta(conta.id)}
-                                className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
-                                title="Excluir conta"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
+                              <p className="text-xs text-slate-500 mt-0.5">
+                                {item.categoria} • Venc: {item.vencimento.split("-").reverse().join("/")} •{" "}
+                                <span className={item.quemPaga === "DIV" ? "text-amber-700 font-semibold" : "text-blue-700 font-semibold"}>
+                                  {item.subtitulo}
+                                </span>
+                              </p>
                             </div>
                           </div>
-                        );
-                      })
+                          <div className="flex items-center gap-2">
+                            <span
+                              className={`font-bold mr-1 ${
+                                item.pago ? "text-slate-400 line-through" : "text-slate-900"
+                              }`}
+                            >
+                              {formatarMoeda(item.valor)}
+                            </span>
+                            {item.isFaturaCartao ? (
+                              <button
+                                onClick={() => {
+                                  setAba("cartoes");
+                                  if (item.banco) setBancoFiltro(item.banco);
+                                }}
+                                className="px-2 py-1 text-[11px] font-semibold text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded border border-blue-200 transition flex items-center gap-1"
+                                title="Ver compras e detalhes na aba de cartões"
+                              >
+                                <ExternalLink className="w-3 h-3" />
+                                Ver Fatura
+                              </button>
+                            ) : (
+                              <>
+                                <button
+                                  onClick={() => item.contaOriginal && iniciarEdicaoConta(item.contaOriginal)}
+                                  className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition"
+                                  title="Alterar valor ou detalhes"
+                                >
+                                  <Pencil className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={() => deletarConta(item.id)}
+                                  className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
+                                  title="Excluir conta"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })
                   )}
                 </div>
               </div>
@@ -1182,74 +1407,102 @@ export default function DashboardPage() {
                   </span>
                 </div>
 
-                {/* Card de Faturas de Cartão (C6 Bank + Sicredi) para Letícia */}
-                <div className="p-4 bg-slate-50 border-b border-slate-100">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <CreditCard className="w-4 h-4 text-purple-600" />
-                      <div>
-                        <p className="text-xs font-bold text-slate-800">Faturas de Cartão (C6 & Sicredi)</p>
-                        <p className="text-[11px] text-slate-500">
-                          Exclusivo Letícia ({formatarMoeda(resumoCartoesMes.leDireto)}) + 50% Dividido ({formatarMoeda(resumoCartoesMes.metadeDiv)})
-                        </p>
-                      </div>
-                    </div>
-                    <span className="text-sm font-extrabold text-purple-700">
-                      {formatarMoeda(resumoCartoesMes.totalLeticiaCartoes)}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Lista de Contas da Casa atribuídas à Letícia */}
+                {/* Lista Unificada de Contas & Faturas da Letícia (Ordenadas por Urgência em Tempo Real) */}
                 <div className="divide-y divide-slate-100">
-                  {resumoMensalCasal.contasDoMes.filter((c) => c.quemPaga === "LE" || c.quemPaga === "DIV").length === 0 ? (
+                  {contasExibicaoLeticia.length === 0 ? (
                     <p className="p-6 text-xs text-slate-400 text-center">Nenhuma conta atribuída à Letícia neste mês.</p>
                   ) : (
-                    resumoMensalCasal.contasDoMes
-                      .filter((c) => c.quemPaga === "LE" || c.quemPaga === "DIV")
-                      .map((conta) => {
-                        const valorLeticia = conta.quemPaga === "LE" ? conta.valor : conta.valor / 2;
-                        return (
-                          <div key={conta.id} className="px-6 py-3.5 flex items-center justify-between hover:bg-slate-50 transition">
-                            <div className="flex items-center gap-3">
-                              <input
-                                type="checkbox"
-                                checked={conta.pago}
-                                onChange={() => alternarPagoConta(conta.id)}
-                                className="w-4 h-4 accent-purple-600 rounded"
-                              />
-                              <div>
-                                <p className={`text-sm font-semibold ${conta.pago ? "line-through text-slate-400" : "text-slate-800"}`}>
-                                  {conta.descricao}
+                    contasExibicaoLeticia.map((item) => {
+                      const statusVenc = obterStatusVencimento(item.vencimento, item.pago);
+                      return (
+                        <div
+                          key={item.id}
+                          className={`px-6 py-3.5 flex items-center justify-between transition ${
+                            item.pago ? "bg-slate-50/40 opacity-75" : "hover:bg-slate-50"
+                          }`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <input
+                              type="checkbox"
+                              checked={item.pago}
+                              onChange={() => {
+                                if (item.isFaturaCartao && item.chaveFatura) {
+                                  alternarPagoFatura(item.chaveFatura);
+                                } else {
+                                  alternarPagoConta(item.id);
+                                }
+                              }}
+                              className="w-4 h-4 accent-purple-600 rounded cursor-pointer"
+                              title={item.pago ? "Marcar como pendente" : "Marcar como pago"}
+                            />
+                            <div>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                {item.isFaturaCartao && (
+                                  <CreditCard className="w-3.5 h-3.5 text-purple-600 shrink-0" />
+                                )}
+                                <p
+                                  className={`text-sm font-semibold ${
+                                    item.pago ? "line-through text-slate-400" : "text-slate-800"
+                                  }`}
+                                >
+                                  {item.descricao}
                                 </p>
-                                <p className="text-xs text-slate-500">
-                                  {conta.categoria} • Venc: {conta.vencimento.split("-").reverse().join("/")} •{" "}
-                                  <span className={conta.quemPaga === "DIV" ? "text-amber-700 font-semibold" : "text-purple-700 font-semibold"}>
-                                    {conta.quemPaga === "DIV" ? `Dividido (50% de ${formatarMoeda(conta.valor)})` : "100% Letícia"}
-                                  </span>
-                                </p>
+                                <span
+                                  className={`text-[10px] px-2 py-0.5 rounded-full border ${statusVenc.classe}`}
+                                >
+                                  {statusVenc.texto}
+                                </span>
                               </div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <span className="font-bold text-slate-800">{formatarMoeda(valorLeticia)}</span>
-                              <button
-                                onClick={() => iniciarEdicaoConta(conta)}
-                                className="p-1.5 text-slate-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition"
-                                title="Alterar valor ou detalhes"
-                              >
-                                <Pencil className="w-4 h-4" />
-                              </button>
-                              <button
-                                onClick={() => deletarConta(conta.id)}
-                                className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
-                                title="Excluir conta"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
+                              <p className="text-xs text-slate-500 mt-0.5">
+                                {item.categoria} • Venc: {item.vencimento.split("-").reverse().join("/")} •{" "}
+                                <span className={item.quemPaga === "DIV" ? "text-amber-700 font-semibold" : "text-purple-700 font-semibold"}>
+                                  {item.subtitulo}
+                                </span>
+                              </p>
                             </div>
                           </div>
-                        );
-                      })
+                          <div className="flex items-center gap-2">
+                            <span
+                              className={`font-bold mr-1 ${
+                                item.pago ? "text-slate-400 line-through" : "text-slate-900"
+                              }`}
+                            >
+                              {formatarMoeda(item.valor)}
+                            </span>
+                            {item.isFaturaCartao ? (
+                              <button
+                                onClick={() => {
+                                  setAba("cartoes");
+                                  if (item.banco) setBancoFiltro(item.banco);
+                                }}
+                                className="px-2 py-1 text-[11px] font-semibold text-purple-600 hover:text-purple-800 hover:bg-purple-50 rounded border border-purple-200 transition flex items-center gap-1"
+                                title="Ver compras e detalhes na aba de cartões"
+                              >
+                                <ExternalLink className="w-3 h-3" />
+                                Ver Fatura
+                              </button>
+                            ) : (
+                              <>
+                                <button
+                                  onClick={() => item.contaOriginal && iniciarEdicaoConta(item.contaOriginal)}
+                                  className="p-1.5 text-slate-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition"
+                                  title="Alterar valor ou detalhes"
+                                >
+                                  <Pencil className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={() => deletarConta(item.id)}
+                                  className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
+                                  title="Excluir conta"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })
                   )}
                 </div>
               </div>
@@ -2080,49 +2333,77 @@ export default function DashboardPage() {
                   </button>
                 </div>
                 <div className="divide-y divide-slate-100">
-                  {dadosMesVisualizado.contas.length === 0 ? (
+                  {contasOrdenadasAba5.length === 0 ? (
                     <div className="p-8 text-center text-xs text-slate-400">
                       Nenhuma conta fixa lançada para este mês.
                     </div>
                   ) : (
-                    dadosMesVisualizado.contas.map((c) => (
-                      <div key={c.id} className="px-6 py-3.5 flex items-center justify-between hover:bg-slate-50 transition">
-                        <div>
-                          <p className="text-sm font-semibold text-slate-800">{c.descricao}</p>
-                          <p className="text-xs text-slate-500">
-                            Venc: {c.vencimento.split("-").reverse().join("/")} • {c.categoria} •{" "}
-                            {c.quemPaga === "DIV" ? "50/50" : c.quemPaga === "VIC" ? "Victor" : "Letícia"}
-                          </p>
+                    contasOrdenadasAba5.map((c) => {
+                      const statusVenc = obterStatusVencimento(c.vencimento, c.pago);
+                      return (
+                        <div
+                          key={c.id}
+                          className={`px-6 py-3.5 flex items-center justify-between transition ${
+                            c.pago ? "bg-slate-50/40 opacity-75" : "hover:bg-slate-50"
+                          }`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <input
+                              type="checkbox"
+                              checked={c.pago}
+                              onChange={() => alternarPagoConta(c.id)}
+                              className="w-4 h-4 accent-emerald-600 rounded cursor-pointer"
+                              title={c.pago ? "Marcar como pendente" : "Marcar como pago"}
+                            />
+                            <div>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <p className={`text-sm font-semibold ${c.pago ? "line-through text-slate-400" : "text-slate-800"}`}>
+                                  {c.descricao}
+                                </p>
+                                <span className={`text-[10px] px-2 py-0.5 rounded-full border ${statusVenc.classe}`}>
+                                  {statusVenc.texto}
+                                </span>
+                              </div>
+                              <p className="text-xs text-slate-500 mt-0.5">
+                                Venc: {c.vencimento.split("-").reverse().join("/")} • {c.categoria} •{" "}
+                                <span className={c.quemPaga === "DIV" ? "text-amber-700 font-semibold" : "text-emerald-700 font-semibold"}>
+                                  {c.quemPaga === "DIV" ? "50/50" : c.quemPaga === "VIC" ? "Victor" : "Letícia"}
+                                </span>
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className={`font-bold mr-1 ${c.pago ? "text-slate-400 line-through" : "text-slate-900"}`}>
+                              {formatarMoeda(c.valor)}
+                            </span>
+                            <button
+                              onClick={() => alternarPagoConta(c.id)}
+                              className={`text-xs px-2.5 py-1 rounded-lg font-bold border transition ${
+                                c.pago
+                                  ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                  : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
+                              }`}
+                            >
+                              {c.pago ? "Pago" : "Pendente"}
+                            </button>
+                            <button
+                              onClick={() => iniciarEdicaoConta(c)}
+                              className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition"
+                              title="Alterar valor ou detalhes desta conta neste mês"
+                            >
+                              <Pencil className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => deletarConta(c.id)}
+                              className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
+                              title="Excluir esta conta deste mês"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-slate-900 mr-1">{formatarMoeda(c.valor)}</span>
-                          <button
-                            onClick={() => alternarPagoConta(c.id)}
-                            className={`text-xs px-2.5 py-1 rounded-lg font-bold border transition ${
-                              c.pago
-                                ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                                : "bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100"
-                            }`}
-                          >
-                            {c.pago ? "Pago" : "Pendente"}
-                          </button>
-                          <button
-                            onClick={() => iniciarEdicaoConta(c)}
-                            className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition"
-                            title="Alterar valor ou detalhes desta conta neste mês"
-                          >
-                            <Pencil className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => deletarConta(c.id)}
-                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
-                            title="Excluir esta conta deste mês"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </div>
-                    ))
+                      );
+                    })
                   )}
                 </div>
               </div>
@@ -2398,37 +2679,43 @@ export default function DashboardPage() {
                       {resumoMensalCasal.contasDoMes.filter((c) => c.quemPaga === "VIC" || c.quemPaga === "DIV").length === 0 ? (
                         <p className="py-3 text-xs text-slate-400 text-center">Nenhuma conta atribuída ao Victor neste mês.</p>
                       ) : (
-                        resumoMensalCasal.contasDoMes
-                          .filter((c) => c.quemPaga === "VIC" || c.quemPaga === "DIV")
-                          .map((conta) => {
-                            const valorVictor = conta.quemPaga === "VIC" ? conta.valor : conta.valor / 2;
-                            return (
-                              <div key={conta.id} className="py-2.5 flex items-center justify-between text-xs">
-                                <div className="flex items-center gap-2.5">
-                                  <input
-                                    type="checkbox"
-                                    checked={conta.pago}
-                                    onChange={() => alternarPagoConta(conta.id)}
-                                    className="w-4 h-4 accent-blue-600 rounded"
-                                  />
-                                  <div>
+                        ordenarContasPorUrgencia(
+                          resumoMensalCasal.contasDoMes.filter((c) => c.quemPaga === "VIC" || c.quemPaga === "DIV")
+                        ).map((conta) => {
+                          const valorVictor = conta.quemPaga === "VIC" ? conta.valor : conta.valor / 2;
+                          const statusVenc = obterStatusVencimento(conta.vencimento, conta.pago);
+                          return (
+                            <div key={conta.id} className="py-2.5 flex items-center justify-between text-xs">
+                              <div className="flex items-center gap-2.5">
+                                <input
+                                  type="checkbox"
+                                  checked={conta.pago}
+                                  onChange={() => alternarPagoConta(conta.id)}
+                                  className="w-4 h-4 accent-blue-600 rounded"
+                                />
+                                <div>
+                                  <div className="flex items-center gap-1.5 flex-wrap">
                                     <p className={`font-semibold ${conta.pago ? "line-through text-slate-400" : "text-slate-800"}`}>
                                       {conta.descricao}
                                     </p>
-                                    <p className="text-[11px] text-slate-500">
-                                      Venc: {conta.vencimento.split("-").reverse().join("/")} •{" "}
-                                      <span className={conta.quemPaga === "DIV" ? "text-amber-700 font-semibold" : "text-blue-700 font-semibold"}>
-                                        {conta.quemPaga === "DIV" ? `Dividido (50% de ${formatarMoeda(conta.valor)})` : "100% Victor"}
-                                      </span>
-                                    </p>
+                                    <span className={`text-[9px] px-1.5 py-0.2 rounded-full border ${statusVenc.classe}`}>
+                                      {statusVenc.texto}
+                                    </span>
                                   </div>
+                                  <p className="text-[11px] text-slate-500">
+                                    Venc: {conta.vencimento.split("-").reverse().join("/")} •{" "}
+                                    <span className={conta.quemPaga === "DIV" ? "text-amber-700 font-semibold" : "text-blue-700 font-semibold"}>
+                                      {conta.quemPaga === "DIV" ? `Dividido (50% de ${formatarMoeda(conta.valor)})` : "100% Victor"}
+                                    </span>
+                                  </p>
                                 </div>
-                                <span className={`font-bold ${conta.pago ? "text-slate-400 line-through" : "text-slate-900"}`}>
-                                  {formatarMoeda(valorVictor)}
-                                </span>
                               </div>
-                            );
-                          })
+                              <span className={`font-bold ${conta.pago ? "text-slate-400 line-through" : "text-slate-900"}`}>
+                                {formatarMoeda(valorVictor)}
+                              </span>
+                            </div>
+                          );
+                        })
                       )}
                     </div>
                   </div>
@@ -2558,37 +2845,43 @@ export default function DashboardPage() {
                       {resumoMensalCasal.contasDoMes.filter((c) => c.quemPaga === "LE" || c.quemPaga === "DIV").length === 0 ? (
                         <p className="py-3 text-xs text-slate-400 text-center">Nenhuma conta atribuída à Letícia neste mês.</p>
                       ) : (
-                        resumoMensalCasal.contasDoMes
-                          .filter((c) => c.quemPaga === "LE" || c.quemPaga === "DIV")
-                          .map((conta) => {
-                            const valorLeticia = conta.quemPaga === "LE" ? conta.valor : conta.valor / 2;
-                            return (
-                              <div key={conta.id} className="py-2.5 flex items-center justify-between text-xs">
-                                <div className="flex items-center gap-2.5">
-                                  <input
-                                    type="checkbox"
-                                    checked={conta.pago}
-                                    onChange={() => alternarPagoConta(conta.id)}
-                                    className="w-4 h-4 accent-purple-600 rounded"
-                                  />
-                                  <div>
+                        ordenarContasPorUrgencia(
+                          resumoMensalCasal.contasDoMes.filter((c) => c.quemPaga === "LE" || c.quemPaga === "DIV")
+                        ).map((conta) => {
+                          const valorLeticia = conta.quemPaga === "LE" ? conta.valor : conta.valor / 2;
+                          const statusVenc = obterStatusVencimento(conta.vencimento, conta.pago);
+                          return (
+                            <div key={conta.id} className="py-2.5 flex items-center justify-between text-xs">
+                              <div className="flex items-center gap-2.5">
+                                <input
+                                  type="checkbox"
+                                  checked={conta.pago}
+                                  onChange={() => alternarPagoConta(conta.id)}
+                                  className="w-4 h-4 accent-purple-600 rounded"
+                                />
+                                <div>
+                                  <div className="flex items-center gap-1.5 flex-wrap">
                                     <p className={`font-semibold ${conta.pago ? "line-through text-slate-400" : "text-slate-800"}`}>
                                       {conta.descricao}
                                     </p>
-                                    <p className="text-[11px] text-slate-500">
-                                      Venc: {conta.vencimento.split("-").reverse().join("/")} •{" "}
-                                      <span className={conta.quemPaga === "DIV" ? "text-amber-700 font-semibold" : "text-purple-700 font-semibold"}>
-                                        {conta.quemPaga === "DIV" ? `Dividido (50% de ${formatarMoeda(conta.valor)})` : "100% Letícia"}
-                                      </span>
-                                    </p>
+                                    <span className={`text-[9px] px-1.5 py-0.2 rounded-full border ${statusVenc.classe}`}>
+                                      {statusVenc.texto}
+                                    </span>
                                   </div>
+                                  <p className="text-[11px] text-slate-500">
+                                    Venc: {conta.vencimento.split("-").reverse().join("/")} •{" "}
+                                    <span className={conta.quemPaga === "DIV" ? "text-amber-700 font-semibold" : "text-purple-700 font-semibold"}>
+                                      {conta.quemPaga === "DIV" ? `Dividido (50% de ${formatarMoeda(conta.valor)})` : "100% Letícia"}
+                                    </span>
+                                  </p>
                                 </div>
-                                <span className={`font-bold ${conta.pago ? "text-slate-400 line-through" : "text-slate-900"}`}>
-                                  {formatarMoeda(valorLeticia)}
-                                </span>
                               </div>
-                            );
-                          })
+                              <span className={`font-bold ${conta.pago ? "text-slate-400 line-through" : "text-slate-900"}`}>
+                                {formatarMoeda(valorLeticia)}
+                              </span>
+                            </div>
+                          );
+                        })
                       )}
                     </div>
                   </div>
