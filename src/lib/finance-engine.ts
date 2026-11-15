@@ -10,6 +10,8 @@ export interface ContaCasa {
   vencimento: string;
   quemPaga: Pagador;
   pago: boolean;
+  status?: "CONFIRMADO" | "PREVISTO";
+  recorrente?: boolean;
 }
 
 export interface MovimentacaoPoupanca {
@@ -19,6 +21,7 @@ export interface MovimentacaoPoupanca {
   tipo: "ENTRADA" | "SAIDA";
   valor: number;
   categoria: "Reserva Emergência" | "Metas / Projetos" | "Diárias Op. Verão" | "Compensação Banrisul (Difa)" | "13º / Extras" | "Outros";
+  status?: "CONFIRMADO" | "PREVISTO";
 }
 
 export interface CompraCartao {
@@ -180,4 +183,163 @@ export function calcularContrachequeRS(params: ParametrosSalario): ResultadoSala
 
 export function formatarMoeda(valor: number): string {
   return valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
+export interface ContrachequeConfirmadoMes {
+  victorConfirmado: boolean;
+  victorValorReal: number;
+  leticiaConfirmada: boolean;
+  leticiaValorReal: number;
+}
+
+export interface ProjecaoMesContas {
+  mesAno: string;
+  label: string;
+  totalContasFixas: number;
+  totalFaturaC6: number;
+  totalFaturaSicredi: number;
+  totalGeral: number;
+  isConfirmado: boolean;
+  contas: ContaCasa[];
+  parcelasProjetadas: {
+    id: string;
+    descricao: string;
+    banco: CartaoBanco;
+    titularCartao: string;
+    parcelaAtual: number;
+    totalParcelas: number;
+    valor: number;
+    quemPaga: Pagador;
+  }[];
+}
+
+export function somarMeses(mesAno: string, qtd: number): string {
+  const [anoStr, mesStr] = mesAno.split("-");
+  let ano = parseInt(anoStr, 10);
+  let mes = parseInt(mesStr, 10) - 1 + qtd;
+  ano += Math.floor(mes / 12);
+  mes = ((mes % 12) + 12) % 12 + 1;
+  return `${ano}-${String(mes).padStart(2, "0")}`;
+}
+
+export function formatarMesAnoLabel(mesAno: string): string {
+  const [ano, mes] = mesAno.split("-");
+  const meses = [
+    "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+    "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
+  ];
+  const idx = parseInt(mes, 10) - 1;
+  return `${meses[idx] || mes}/${ano}`;
+}
+
+function parseParcela(info?: string): { atual: number; total: number } | null {
+  if (!info) return null;
+  const match = info.match(/(\d+)\s*\/\s*(\d+)/);
+  if (!match) return null;
+  return { atual: parseInt(match[1], 10), total: parseInt(match[2], 10) };
+}
+
+export function calcularProjecao6Meses(
+  mesBase: string,
+  contas: ContaCasa[],
+  compras: CompraCartao[]
+): ProjecaoMesContas[] {
+  const resultado: ProjecaoMesContas[] = [];
+
+  // Contas recorrentes base (ex: mês selecionado)
+  const contasBase = contas.filter((c) => c.mesAno === mesBase && c.categoria !== "Fatura Cartão");
+
+  for (let offset = 0; offset < 6; offset++) {
+    const mesAlvo = somarMeses(mesBase, offset);
+    const label = formatarMesAnoLabel(mesAlvo);
+
+    // Contas cadastradas para este mês específico
+    let contasDoMes = contas.filter((c) => c.mesAno === mesAlvo && c.categoria !== "Fatura Cartão");
+    
+    // Se for mês futuro e não houver contas cadastradas, projeta as fixas da base como PREVISTO
+    if (contasDoMes.length === 0 && offset > 0) {
+      contasDoMes = contasBase.map((c) => ({
+        ...c,
+        id: `proj-${mesAlvo}-${c.id}`,
+        mesAno: mesAlvo,
+        vencimento: `${mesAlvo}-${c.vencimento.slice(8) || "10"}`,
+        status: "PREVISTO" as const,
+        pago: false,
+      }));
+    }
+
+    const totalContasFixas = contasDoMes.reduce((acc, c) => acc + c.valor, 0);
+
+    // Projeção das parcelas de cartões
+    const parcelasProjetadas: ProjecaoMesContas["parcelasProjetadas"] = [];
+    let totalFaturaC6 = 0;
+    let totalFaturaSicredi = 0;
+
+    for (const c of compras) {
+      // Se a compra já pertence diretamente ao mês alvo
+      if (c.mesFatura === mesAlvo) {
+        if (c.banco === "C6 Bank") totalFaturaC6 += c.valor;
+        if (c.banco === "Sicredi") totalFaturaSicredi += c.valor;
+        const pInfo = parseParcela(c.parcelaInfo);
+        parcelasProjetadas.push({
+          id: c.id,
+          descricao: c.descricao,
+          banco: c.banco,
+          titularCartao: c.titularCartao,
+          parcelaAtual: pInfo ? pInfo.atual : 1,
+          totalParcelas: pInfo ? pInfo.total : 1,
+          valor: c.valor,
+          quemPaga: c.quemPaga,
+        });
+        continue;
+      }
+
+      // Se a compra foi lançada no mês base e possui parcelas futuras
+      if (c.mesFatura === mesBase && c.parcelaInfo && offset > 0) {
+        const pInfo = parseParcela(c.parcelaInfo);
+        if (pInfo) {
+          const parcelaFutura = pInfo.atual + offset;
+          if (parcelaFutura <= pInfo.total) {
+            if (c.banco === "C6 Bank") totalFaturaC6 += c.valor;
+            if (c.banco === "Sicredi") totalFaturaSicredi += c.valor;
+            parcelasProjetadas.push({
+              id: `${c.id}-off${offset}`,
+              descricao: c.descricao,
+              banco: c.banco,
+              titularCartao: c.titularCartao,
+              parcelaAtual: parcelaFutura,
+              totalParcelas: pInfo.total,
+              valor: c.valor,
+              quemPaga: c.quemPaga,
+            });
+          }
+        }
+      }
+    }
+
+    // Se o usuário adicionou explicitamente uma conta de Fatura Cartão confirmada no mês
+    const faturasCadastradas = contas.filter(
+      (c) => c.mesAno === mesAlvo && c.categoria === "Fatura Cartão"
+    );
+    const hasFaturaConfirmada = faturasCadastradas.length > 0;
+    const valorFaturaCadastrada = faturasCadastradas.reduce((acc, f) => acc + f.valor, 0);
+
+    const totalCartoes = hasFaturaConfirmada
+      ? valorFaturaCadastrada
+      : totalFaturaC6 + totalFaturaSicredi;
+
+    resultado.push({
+      mesAno: mesAlvo,
+      label,
+      totalContasFixas,
+      totalFaturaC6,
+      totalFaturaSicredi,
+      totalGeral: totalContasFixas + totalCartoes,
+      isConfirmado: offset === 0 || hasFaturaConfirmada,
+      contas: contasDoMes,
+      parcelasProjetadas,
+    });
+  }
+
+  return resultado;
 }

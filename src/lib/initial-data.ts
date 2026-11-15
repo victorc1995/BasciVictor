@@ -1,4 +1,4 @@
-import { CompraCartao, ContaCasa, MovimentacaoPoupanca, ParametrosSalario } from "./finance-engine";
+import { CompraCartao, ContaCasa, ContrachequeConfirmadoMes, MovimentacaoPoupanca, ParametrosSalario } from "./finance-engine";
 
 export const INITIAL_SALARIO_VICTOR: ParametrosSalario = {
   subsídioBase: 6429.95,
@@ -26,20 +26,31 @@ export const INITIAL_SALARIO_LETICIA: ParametrosSalario = {
   dependentesIR: 0,
 };
 
+export const INITIAL_CONTRACHEQUES: Record<string, ContrachequeConfirmadoMes> = {
+  "2026-11": {
+    victorConfirmado: false,
+    victorValorReal: 5335.99,
+    leticiaConfirmada: false,
+    leticiaValorReal: 4692.89,
+  },
+};
+
 export const INITIAL_CONTAS_CASA: ContaCasa[] = [
-  { id: "c1", mesAno: "2026-11", descricao: "Aluguel + IPTU", categoria: "Aluguel", valor: 1444.35, vencimento: "2026-11-05", quemPaga: "DIV", pago: true },
-  { id: "c2", mesAno: "2026-11", descricao: "Internet Residencial (Vero)", categoria: "Internet", valor: 135.00, vencimento: "2026-11-15", quemPaga: "DIV", pago: false },
-  { id: "c3", mesAno: "2026-11", descricao: "Energia Elétrica (Luz)", categoria: "Luz", valor: 301.00, vencimento: "2026-11-20", quemPaga: "DIV", pago: false },
-  { id: "c4", mesAno: "2026-11", descricao: "Água / Saneamento", categoria: "Água", valor: 90.00, vencimento: "2026-11-20", quemPaga: "DIV", pago: false },
-  { id: "c5", mesAno: "2026-11", descricao: "Parcela Financiamento Carro", categoria: "Carro", valor: 1100.00, vencimento: "2026-11-20", quemPaga: "DIV", pago: false },
-  { id: "c6", mesAno: "2026-11", descricao: "Telefone Celular Vivo", categoria: "Telefone", valor: 64.00, vencimento: "2026-11-10", quemPaga: "VIC", pago: true },
+  { id: "c1", mesAno: "2026-11", descricao: "Aluguel + IPTU", categoria: "Aluguel", valor: 1444.35, vencimento: "2026-11-05", quemPaga: "DIV", pago: true, status: "CONFIRMADO", recorrente: true },
+  { id: "c2", mesAno: "2026-11", descricao: "Internet Residencial (Vero)", categoria: "Internet", valor: 135.00, vencimento: "2026-11-15", quemPaga: "DIV", pago: false, status: "CONFIRMADO", recorrente: true },
+  { id: "c3", mesAno: "2026-11", descricao: "Energia Elétrica (Luz)", categoria: "Luz", valor: 301.00, vencimento: "2026-11-20", quemPaga: "DIV", pago: false, status: "CONFIRMADO", recorrente: true },
+  { id: "c4", mesAno: "2026-11", descricao: "Água / Saneamento", categoria: "Água", valor: 90.00, vencimento: "2026-11-20", quemPaga: "DIV", pago: false, status: "CONFIRMADO", recorrente: true },
+  { id: "c5", mesAno: "2026-11", descricao: "Parcela Financiamento Carro", categoria: "Carro", valor: 1100.00, vencimento: "2026-11-20", quemPaga: "DIV", pago: false, status: "CONFIRMADO", recorrente: true },
+  { id: "c6", mesAno: "2026-11", descricao: "Telefone Celular Vivo", categoria: "Telefone", valor: 64.00, vencimento: "2026-11-10", quemPaga: "VIC", pago: true, status: "CONFIRMADO", recorrente: true },
 ];
 
 export const INITIAL_POUPANCA: MovimentacaoPoupanca[] = [
-  { id: "p1", data: "2026-10-01", descricao: "Reserva de Emergência Intocável", tipo: "ENTRADA", valor: 5000.00, categoria: "Reserva Emergência" },
-  { id: "p2", data: "2026-10-15", descricao: "Sobra Venda HB20 / Caixa Veículo", tipo: "ENTRADA", valor: 26813.00, categoria: "Metas / Projetos" },
-  { id: "p3", data: "2026-11-10", descricao: "Previsão Diárias Op. Verão (Nov)", tipo: "ENTRADA", valor: 6200.00, categoria: "Diárias Op. Verão" },
-  { id: "p4", data: "2026-11-30", descricao: "Compensação Acordo Banrisul (Difa Nov)", tipo: "SAIDA", valor: 1507.35, categoria: "Compensação Banrisul (Difa)" },
+  { id: "p1", data: "2026-10-01", descricao: "Reserva de Emergência Intocável", tipo: "ENTRADA", valor: 5000.00, categoria: "Reserva Emergência", status: "CONFIRMADO" },
+  { id: "p2", data: "2026-10-15", descricao: "Sobra Venda HB20 / Caixa Veículo", tipo: "ENTRADA", valor: 26813.00, categoria: "Metas / Projetos", status: "CONFIRMADO" },
+  { id: "p3", data: "2026-11-10", descricao: "Previsão Diárias Op. Verão (Nov)", tipo: "ENTRADA", valor: 6200.00, categoria: "Diárias Op. Verão", status: "CONFIRMADO" },
+  { id: "p4", data: "2026-11-30", descricao: "Compensação Acordo Banrisul (Difa Nov)", tipo: "SAIDA", valor: 1507.35, categoria: "Compensação Banrisul (Difa)", status: "CONFIRMADO" },
+  { id: "p5", data: "2026-12-02", descricao: "Previsão Diárias Op. Verão (Dez)", tipo: "ENTRADA", valor: 6200.00, categoria: "Diárias Op. Verão", status: "PREVISTO" },
+  { id: "p6", data: "2026-12-30", descricao: "Compensação Acordo Banrisul (Difa Dez)", tipo: "SAIDA", valor: 1507.35, categoria: "Compensação Banrisul (Difa)", status: "PREVISTO" },
 ];
 
 export const INITIAL_COMPRAS_CARTAO: CompraCartao[] = [

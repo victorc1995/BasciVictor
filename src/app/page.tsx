@@ -16,28 +16,37 @@ import {
   Download,
   FileText,
   AlertCircle,
+  CalendarRange,
+  Clock,
+  Layers,
 } from "lucide-react";
 import {
   CartaoBanco,
   CompraCartao,
   ContaCasa,
+  ContrachequeConfirmadoMes,
   MovimentacaoPoupanca,
   Pagador,
   ParametrosSalario,
+  ProjecaoMesContas,
   TABELA_RS_2026,
   calcularContrachequeRS,
+  calcularProjecao6Meses,
+  formatarMesAnoLabel,
   formatarMoeda,
+  somarMeses,
 } from "@/lib/finance-engine";
 import {
   INITIAL_COMPRAS_CARTAO,
   INITIAL_CONTAS_CASA,
+  INITIAL_CONTRACHEQUES,
   INITIAL_POUPANCA,
   INITIAL_SALARIO_LETICIA,
   INITIAL_SALARIO_VICTOR,
 } from "@/lib/initial-data";
 import { extrairComprasDePDF } from "@/lib/pdf-parser";
 
-type AbaAtiva = "inicio" | "poupanca" | "salarios" | "cartoes";
+type AbaAtiva = "inicio" | "poupanca" | "salarios" | "cartoes" | "contas";
 
 export default function DashboardPage() {
   const [aba, setAba] = useState<AbaAtiva>("inicio");
@@ -50,6 +59,7 @@ export default function DashboardPage() {
   const [salVictor, setSalVictor] = useState<ParametrosSalario>(INITIAL_SALARIO_VICTOR);
   const [salLeticia, setSalLeticia] = useState<ParametrosSalario>(INITIAL_SALARIO_LETICIA);
   const [comprasCartao, setComprasCartao] = useState<CompraCartao[]>(INITIAL_COMPRAS_CARTAO);
+  const [contracheques, setContracheques] = useState<Record<string, ContrachequeConfirmadoMes>>(INITIAL_CONTRACHEQUES);
 
   // Modal de inclusão de contas / upload de PDF na Tela Inicial
   const [modalAberto, setModalAberto] = useState(false);
@@ -68,11 +78,17 @@ export default function DashboardPage() {
   const [poupData, setPoupData] = useState<string>(() => new Date().toISOString().slice(0, 10));
   const [poupDesc, setPoupDesc] = useState("");
   const [poupTipo, setPoupTipo] = useState<"ENTRADA" | "SAIDA">("ENTRADA");
+  const [poupStatus, setPoupStatus] = useState<"CONFIRMADO" | "PREVISTO">("CONFIRMADO");
   const [poupValor, setPoupValor] = useState("");
   const [poupCat, setPoupCat] = useState<MovimentacaoPoupanca["categoria"]>("Metas / Projetos");
 
   // Filtro Cartões
   const [bancoFiltro, setBancoFiltro] = useState<CartaoBanco>("C6 Bank");
+
+  // Aba 5 Contas & Projeção 6 Meses
+  const [mesVisualizadoContas, setMesVisualizadoContas] = useState<string>("2026-11");
+  const [bancoFaturaConf, setBancoFaturaConf] = useState<CartaoBanco>("C6 Bank");
+  const [valorFaturaConf, setValorFaturaConf] = useState("");
 
   // Carrega dados salvos localmente
   useEffect(() => {
@@ -85,12 +101,14 @@ export default function DashboardPage() {
           const limpos = parsed.poupanca.map((p: any) => ({
             ...p,
             categoria: (p.categoria === "Carro / Creta" || p.categoria === "Carro/Creta") ? "Metas / Projetos" : p.categoria,
+            status: p.status || "CONFIRMADO",
           }));
           setPoupanca(limpos);
         }
         if (parsed.salVictor) setSalVictor(parsed.salVictor);
         if (parsed.salLeticia) setSalLeticia(parsed.salLeticia);
         if (parsed.comprasCartao) setComprasCartao(parsed.comprasCartao);
+        if (parsed.contracheques) setContracheques(parsed.contracheques);
       } catch (e) {
         console.error("Erro ao ler dados salvos:", e);
       }
@@ -103,24 +121,167 @@ export default function DashboardPage() {
     if (!carregado) return;
     localStorage.setItem(
       "financas_victor_leticia_v2",
-      JSON.stringify({ contasCasa, poupanca, salVictor, salLeticia, comprasCartao })
+      JSON.stringify({ contasCasa, poupanca, salVictor, salLeticia, comprasCartao, contracheques })
     );
-  }, [contasCasa, poupanca, salVictor, salLeticia, comprasCartao, carregado]);
+  }, [contasCasa, poupanca, salVictor, salLeticia, comprasCartao, contracheques, carregado]);
 
   // Cálculos de Salários (Legislação RS 2026)
   const resVictor = useMemo(() => calcularContrachequeRS(salVictor), [salVictor]);
   const resLeticia = useMemo(() => calcularContrachequeRS(salLeticia), [salLeticia]);
-  const salarioLiquidoTotalCasal = resVictor.totalDisponivelMes + resLeticia.totalDisponivelMes;
 
-  // Cálculos de Poupança (Trava de R$ 5.000,00 de Reserva de Emergência)
+  // Contracheque do Mês Selecionado (Confirmado vs Previsão)
+  const contrachequeMes = contracheques[mesSelecionado] || {
+    victorConfirmado: false,
+    victorValorReal: resVictor.totalDisponivelMes,
+    leticiaConfirmada: false,
+    leticiaValorReal: resLeticia.totalDisponivelMes,
+  };
+
+  const salarioVictorFinal = contrachequeMes.victorConfirmado
+    ? contrachequeMes.victorValorReal
+    : resVictor.totalDisponivelMes;
+
+  const salarioLeticiaFinal = contrachequeMes.leticiaConfirmada
+    ? contrachequeMes.leticiaValorReal
+    : resLeticia.totalDisponivelMes;
+
+  const salarioLiquidoTotalCasal = salarioVictorFinal + salarioLeticiaFinal;
+  const salarioPrevistoTotalCasal = resVictor.totalDisponivelMes + resLeticia.totalDisponivelMes;
+
+  // Handlers para confirmação de contracheques
+  const confirmarContrachequeVictor = (valor: number) => {
+    setContracheques((prev) => ({
+      ...prev,
+      [mesSelecionado]: {
+        ...(prev[mesSelecionado] || {
+          leticiaConfirmada: false,
+          leticiaValorReal: resLeticia.totalDisponivelMes,
+        }),
+        victorConfirmado: true,
+        victorValorReal: valor,
+      },
+    }));
+  };
+
+  const reverterContrachequeVictor = () => {
+    setContracheques((prev) => ({
+      ...prev,
+      [mesSelecionado]: {
+        ...(prev[mesSelecionado] || {
+          leticiaConfirmada: false,
+          leticiaValorReal: resLeticia.totalDisponivelMes,
+        }),
+        victorConfirmado: false,
+        victorValorReal: resVictor.totalDisponivelMes,
+      },
+    }));
+  };
+
+  const confirmarContrachequeLeticia = (valor: number) => {
+    setContracheques((prev) => ({
+      ...prev,
+      [mesSelecionado]: {
+        ...(prev[mesSelecionado] || {
+          victorConfirmado: false,
+          victorValorReal: resVictor.totalDisponivelMes,
+        }),
+        leticiaConfirmada: true,
+        leticiaValorReal: valor,
+      },
+    }));
+  };
+
+  const reverterContrachequeLeticia = () => {
+    setContracheques((prev) => ({
+      ...prev,
+      [mesSelecionado]: {
+        ...(prev[mesSelecionado] || {
+          victorConfirmado: false,
+          victorValorReal: resVictor.totalDisponivelMes,
+        }),
+        leticiaConfirmada: false,
+        leticiaValorReal: resLeticia.totalDisponivelMes,
+      },
+    }));
+  };
+
+  // Cálculos de Poupança (Confirmado vs Previsão Futura)
   const resumoPoupanca = useMemo(() => {
-    const totalEntradas = poupanca.filter((p) => p.tipo === "ENTRADA").reduce((acc, p) => acc + p.valor, 0);
-    const totalSaidas = poupanca.filter((p) => p.tipo === "SAIDA").reduce((acc, p) => acc + p.valor, 0);
-    const saldoTotal = totalEntradas - totalSaidas;
+    const totalEntradasConfirmadas = poupanca
+      .filter((p) => p.tipo === "ENTRADA" && p.status !== "PREVISTO")
+      .reduce((acc, p) => acc + p.valor, 0);
+
+    const totalSaidasConfirmadas = poupanca
+      .filter((p) => p.tipo === "SAIDA" && p.status !== "PREVISTO")
+      .reduce((acc, p) => acc + p.valor, 0);
+
+    const saldoConfirmado = totalEntradasConfirmadas - totalSaidasConfirmadas;
+
+    const totalEntradasPrevistas = poupanca
+      .filter((p) => p.tipo === "ENTRADA" && p.status === "PREVISTO")
+      .reduce((acc, p) => acc + p.valor, 0);
+
+    const totalSaidasPrevistas = poupanca
+      .filter((p) => p.tipo === "SAIDA" && p.status === "PREVISTO")
+      .reduce((acc, p) => acc + p.valor, 0);
+
+    const saldoPrevistoPendente = totalEntradasPrevistas - totalSaidasPrevistas;
+    const saldoTotalProjetado = saldoConfirmado + saldoPrevistoPendente;
+
     const reservaEmergencia = 5000;
-    const saldoLivreMetas = Math.max(0, saldoTotal - reservaEmergencia);
-    return { totalEntradas, totalSaidas, saldoTotal, reservaEmergencia, saldoLivreMetas };
+    const saldoLivreConfirmado = Math.max(0, saldoConfirmado - reservaEmergencia);
+    const saldoLivreProjetado = Math.max(0, saldoTotalProjetado - reservaEmergencia);
+
+    return {
+      totalEntradasConfirmadas,
+      totalSaidasConfirmadas,
+      saldoConfirmado,
+      saldoTotal: saldoConfirmado,
+      totalEntradasPrevistas,
+      totalSaidasPrevistas,
+      saldoPrevistoPendente,
+      saldoTotalProjetado,
+      reservaEmergencia,
+      saldoLivreConfirmado,
+      saldoLivreProjetado,
+      saldoLivreMetas: saldoLivreConfirmado,
+    };
   }, [poupanca]);
+
+  // Projeção dos Próximos 6 Meses para a Aba 5 Contas
+  const projecao6Meses = useMemo(() => {
+    return calcularProjecao6Meses(mesSelecionado, contasCasa, comprasCartao);
+  }, [mesSelecionado, contasCasa, comprasCartao]);
+
+  // Sincroniza mês visualizado da aba contas quando muda o mês principal
+  useEffect(() => {
+    setMesVisualizadoContas(mesSelecionado);
+  }, [mesSelecionado]);
+
+  // Dados do mês visualizado na Aba 5 (Contas & Projeção)
+  const dadosMesVisualizado = useMemo(() => {
+    const found = projecao6Meses.find((p) => p.mesAno === mesVisualizadoContas);
+    if (found) return found;
+    return (
+      projecao6Meses[0] || {
+        mesAno: mesVisualizadoContas,
+        label: formatarMesAnoLabel(mesVisualizadoContas),
+        totalContasFixas: 0,
+        totalFaturaC6: 0,
+        totalFaturaSicredi: 0,
+        totalGeral: 0,
+        isConfirmado: false,
+        contas: [],
+        parcelasProjetadas: [],
+      }
+    );
+  }, [projecao6Meses, mesVisualizadoContas]);
+
+  const mesConfirmadoInfo = useMemo(() => {
+    return contasCasa.find(
+      (c) => c.mesAno === mesVisualizadoContas && c.categoria === "Fatura Cartão" && c.status === "CONFIRMADO"
+    );
+  }, [contasCasa, mesVisualizadoContas]);
 
   // Cálculos de Cartões no Mês Selecionado
   const resumoCartoesMes = useMemo(() => {
@@ -169,10 +330,10 @@ export default function DashboardPage() {
       totalGastoVictor,
       totalGastoLeticia,
       totalGastoCasal,
-      saldoVictor: resVictor.totalDisponivelMes - totalGastoVictor,
-      saldoLeticia: resLeticia.totalDisponivelMes - totalGastoLeticia,
+      saldoVictor: salarioVictorFinal - totalGastoVictor,
+      saldoLeticia: salarioLeticiaFinal - totalGastoLeticia,
     };
-  }, [contasCasa, mesSelecionado, resumoCartoesMes, resVictor, resLeticia]);
+  }, [contasCasa, mesSelecionado, resumoCartoesMes, salarioVictorFinal, salarioLeticiaFinal]);
 
   // Handlers
   const adicionarContaCasa = (e: React.FormEvent) => {
@@ -189,6 +350,7 @@ export default function DashboardPage() {
       vencimento: novoVencimento,
       quemPaga: novoPagador,
       pago: false,
+      status: "CONFIRMADO",
     };
     setContasCasa((prev) => [nova, ...prev]);
     setNovaDescricao("");
@@ -221,9 +383,10 @@ export default function DashboardPage() {
           descricao: `Fatura ${bancoPDF} (${comIds.length} lançamentos via PDF)`,
           categoria: "Fatura Cartão",
           valor: somaFatura,
-          vencimento: `${mesSelecionado}-01`,
+          vencimento: `${mesSelecionado}-05`,
           quemPaga: "DIV",
           pago: false,
+          status: "CONFIRMADO",
         },
         ...prev,
       ]);
@@ -253,11 +416,59 @@ export default function DashboardPage() {
         tipo: poupTipo,
         valor: val,
         categoria: poupCat,
+        status: poupStatus,
       },
       ...prev,
     ]);
     setPoupDesc("");
     setPoupValor("");
+  };
+
+  const alternarStatusPoupanca = (id: string) => {
+    setPoupanca((prev) =>
+      prev.map((p) =>
+        p.id === id
+          ? { ...p, status: p.status === "PREVISTO" ? "CONFIRMADO" : "PREVISTO" }
+          : p
+      )
+    );
+  };
+
+  const handleConfirmarFaturaMes = (e: React.FormEvent) => {
+    e.preventDefault();
+    const val = parseFloat(valorFaturaConf.replace(",", "."));
+    if (isNaN(val) || val <= 0) return;
+
+    const novaFatura: ContaCasa = {
+      id: `fat-conf-${mesVisualizadoContas}-${bancoFaturaConf}-${Date.now()}`,
+      mesAno: mesVisualizadoContas,
+      descricao: `Fatura ${bancoFaturaConf} (Confirmada)`,
+      categoria: "Fatura Cartão",
+      valor: val,
+      vencimento: `${mesVisualizadoContas}-05`,
+      quemPaga: "DIV",
+      pago: false,
+      status: "CONFIRMADO",
+    };
+
+    setContasCasa((prev) => [
+      novaFatura,
+      ...prev.filter(
+        (c) =>
+          !(
+            c.mesAno === mesVisualizadoContas &&
+            c.categoria === "Fatura Cartão" &&
+            c.descricao.includes(bancoFaturaConf)
+          )
+      ),
+    ]);
+    setValorFaturaConf("");
+  };
+
+  const alternarPagoConta = (id: string) => {
+    setContasCasa((prev) =>
+      prev.map((c) => (c.id === id ? { ...c, pago: !c.pago } : c))
+    );
   };
 
   const alterarPagadorCompra = (id: string, novoPagador: Pagador) => {
@@ -266,7 +477,7 @@ export default function DashboardPage() {
 
   const exportarBackup = () => {
     const blob = new Blob(
-      [JSON.stringify({ contasCasa, poupanca, salVictor, salLeticia, comprasCartao }, null, 2)],
+      [JSON.stringify({ contasCasa, poupanca, salVictor, salLeticia, comprasCartao, contracheques }, null, 2)],
       { type: "application/json" }
     );
     const url = URL.createObjectURL(blob);
@@ -307,13 +518,14 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Navegação das 4 Abas */}
+        {/* Navegação das 5 Abas */}
         <nav className="max-w-7xl mx-auto px-4 flex gap-1 overflow-x-auto border-t border-slate-800">
           {[
             { id: "inicio", label: "1. Tela Inicial", icon: Wallet },
             { id: "poupanca", label: "2. Poupança & Metas", icon: PiggyBank },
             { id: "salarios", label: "3. Salários (Legislação RS)", icon: BadgeDollarSign },
             { id: "cartoes", label: "4. Cartões (C6 & Sicredi)", icon: CreditCard },
+            { id: "contas", label: "5. Contas & Projeção 6 Meses", icon: CalendarRange },
           ].map((item) => {
             const Icon = item.icon;
             const ativo = aba === item.id;
@@ -393,11 +605,16 @@ export default function DashboardPage() {
               <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
                 <span className="text-xs font-semibold uppercase text-slate-400">Poupança Atualizada</span>
                 <p className="text-2xl font-extrabold text-slate-900 mt-1">
-                  {formatarMoeda(resumoPoupanca.saldoTotal)}
+                  {formatarMoeda(resumoPoupanca.saldoConfirmado)}
                 </p>
-                <p className="text-xs text-amber-600 font-medium mt-2">
-                  Livre p/ Metas: {formatarMoeda(resumoPoupanca.saldoLivreMetas)} (R$ 5k blindados)
-                </p>
+                <div className="flex justify-between items-center text-xs mt-2">
+                  <span className="text-amber-600 font-medium">
+                    Livre: {formatarMoeda(resumoPoupanca.saldoLivreConfirmado)}
+                  </span>
+                  <span className="text-slate-400">
+                    Projetado: {formatarMoeda(resumoPoupanca.saldoTotalProjetado)}
+                  </span>
+                </div>
               </div>
             </div>
 
@@ -454,29 +671,39 @@ export default function DashboardPage() {
         )}
 
         {/* ========================================================= */}
-        {/* ABA 2: POUPANÇA DIRETA                                    */}
+        {/* ABA 2: POUPANÇA DIRETA & PREVISÕES FUTURAS                */}
         {/* ========================================================= */}
         {aba === "poupanca" && (
           <div className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="bg-slate-900 text-white p-6 rounded-2xl shadow-sm">
-                <span className="text-xs uppercase text-slate-400 font-semibold">Saldo Total na Poupança</span>
-                <p className="text-3xl font-extrabold mt-1">{formatarMoeda(resumoPoupanca.saldoTotal)}</p>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div className="bg-slate-900 text-white p-5 rounded-2xl shadow-sm">
+                <span className="text-xs uppercase text-slate-400 font-semibold">Saldo Atual Confirmado</span>
+                <p className="text-2xl font-extrabold mt-1 text-emerald-400">{formatarMoeda(resumoPoupanca.saldoConfirmado)}</p>
+                <p className="text-[11px] text-slate-400 mt-1">Efetivado na conta agora</p>
               </div>
-              <div className="bg-amber-50 border border-amber-200 p-6 rounded-2xl">
-                <span className="text-xs uppercase text-amber-700 font-semibold">Reserva de Emergência (Trava)</span>
-                <p className="text-3xl font-extrabold text-amber-800 mt-1">{formatarMoeda(resumoPoupanca.reservaEmergencia)}</p>
-                <p className="text-xs text-amber-700 mt-1">Valor intocável de segurança</p>
+              <div className="bg-blue-50 border border-blue-200 p-5 rounded-2xl">
+                <span className="text-xs uppercase text-blue-700 font-semibold">Previsões Pendentes</span>
+                <p className={`text-2xl font-extrabold mt-1 ${resumoPoupanca.saldoPrevistoPendente >= 0 ? "text-blue-700" : "text-rose-600"}`}>
+                  {resumoPoupanca.saldoPrevistoPendente >= 0 ? "+" : ""}{formatarMoeda(resumoPoupanca.saldoPrevistoPendente)}
+                </p>
+                <p className="text-[11px] text-blue-600 mt-1">Entradas e saídas futuras</p>
               </div>
-              <div className="bg-emerald-50 border border-emerald-200 p-6 rounded-2xl">
-                <span className="text-xs uppercase text-emerald-700 font-semibold">Saldo Livre para Metas</span>
-                <p className="text-3xl font-extrabold text-emerald-700 mt-1">{formatarMoeda(resumoPoupanca.saldoLivreMetas)}</p>
-                <p className="text-xs text-emerald-700 mt-1">Disponível após descontar reserva</p>
+              <div className="bg-slate-100 border border-slate-300 p-5 rounded-2xl">
+                <span className="text-xs uppercase text-slate-600 font-semibold">Saldo Projetado Final</span>
+                <p className="text-2xl font-extrabold mt-1 text-slate-900">{formatarMoeda(resumoPoupanca.saldoTotalProjetado)}</p>
+                <p className="text-[11px] text-slate-500 mt-1">Confirmado + Previsões</p>
+              </div>
+              <div className="bg-amber-50 border border-amber-200 p-5 rounded-2xl">
+                <span className="text-xs uppercase text-amber-700 font-semibold">Reserva de Emergência</span>
+                <p className="text-2xl font-extrabold text-amber-800 mt-1">{formatarMoeda(resumoPoupanca.reservaEmergencia)}</p>
+                <p className="text-[11px] text-amber-700 mt-1">
+                  Livre p/ Metas: <strong>{formatarMoeda(resumoPoupanca.saldoLivreConfirmado)}</strong>
+                </p>
               </div>
             </div>
 
-            {/* Formulário Direto na Tela com Seleção Manual de Data */}
-            <form onSubmit={adicionarMovPoupanca} className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4 items-end">
+            {/* Formulário Direto na Tela com Seleção Manual de Data e Previsão Futura */}
+            <form onSubmit={adicionarMovPoupanca} className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-3 items-end">
               <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-1">Data</label>
                 <input
@@ -492,7 +719,7 @@ export default function DashboardPage() {
                 <input
                   type="text"
                   required
-                  placeholder="Ex: Diárias Op. Verão ou Difa Banrisul"
+                  placeholder="Ex: Diárias Op. Verão Dezembro ou Difa Banrisul"
                   value={poupDesc}
                   onChange={(e) => setPoupDesc(e.target.value)}
                   className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm"
@@ -507,6 +734,17 @@ export default function DashboardPage() {
                 >
                   <option value="ENTRADA">+ Entrada (Guardar)</option>
                   <option value="SAIDA">- Saída (Resgatar)</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Situação / Status</label>
+                <select
+                  value={poupStatus}
+                  onChange={(e) => setPoupStatus(e.target.value as "CONFIRMADO" | "PREVISTO")}
+                  className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm font-semibold"
+                >
+                  <option value="CONFIRMADO">✓ Já Entrou / Confirmado</option>
+                  <option value="PREVISTO">⏳ Previsão Futura</option>
                 </select>
               </div>
               <div>
@@ -528,78 +766,147 @@ export default function DashboardPage() {
 
             {/* Histórico de Movimentações */}
             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-              <div className="px-6 py-4 border-b border-slate-100 font-bold text-slate-800">Extrato da Poupança</div>
+              <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+                <div>
+                  <h3 className="font-bold text-slate-800">Extrato da Poupança & Previsões</h3>
+                  <p className="text-xs text-slate-500">Valores com status "Previsão" podem ser confirmados no dia com 1 clique</p>
+                </div>
+              </div>
               <div className="divide-y divide-slate-100">
-                {poupanca.map((mov) => (
-                  <div key={mov.id} className="px-6 py-3.5 flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-semibold text-slate-800">{mov.descricao}</p>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        <input
-                          type="date"
-                          value={mov.data}
-                          onChange={(e) => {
-                            const novaData = e.target.value;
-                            setPoupanca((prev) =>
-                              prev.map((p) => (p.id === mov.id ? { ...p, data: novaData } : p))
-                            );
-                          }}
-                          className="text-xs text-slate-600 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded px-1.5 py-0.5 cursor-pointer"
-                          title="Clique para editar a data deste lançamento"
-                        />
-                        <span className="text-xs text-slate-400">• {mov.categoria}</span>
+                {poupanca.map((mov) => {
+                  const isPrevisto = mov.status === "PREVISTO";
+                  return (
+                    <div key={mov.id} className="px-6 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-semibold text-slate-800">{mov.descricao}</p>
+                          <span
+                            className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                              isPrevisto
+                                ? "bg-amber-100 text-amber-800 border-amber-300"
+                                : "bg-emerald-100 text-emerald-800 border-emerald-300"
+                            }`}
+                          >
+                            {isPrevisto ? "⏳ Previsão Futura" : "✓ Confirmado"}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 mt-1">
+                          <input
+                            type="date"
+                            value={mov.data}
+                            onChange={(e) => {
+                              const novaData = e.target.value;
+                              setPoupanca((prev) =>
+                                prev.map((p) => (p.id === mov.id ? { ...p, data: novaData } : p))
+                              );
+                            }}
+                            className="text-xs text-slate-600 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded px-1.5 py-0.5 cursor-pointer"
+                            title="Clique para editar a data deste lançamento"
+                          />
+                          <span className="text-xs text-slate-400">• {mov.categoria}</span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-3">
+                        <span className={`font-bold text-base ${mov.tipo === "ENTRADA" ? "text-emerald-600" : "text-rose-600"}`}>
+                          {mov.tipo === "ENTRADA" ? "+" : "-"} {formatarMoeda(mov.valor)}
+                        </span>
+
+                        {/* Botão de confirmação com 1 clique para previsões futuras */}
+                        {isPrevisto ? (
+                          <button
+                            type="button"
+                            onClick={() => alternarStatusPoupanca(mov.id)}
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-3 py-1.5 rounded-lg shadow-sm transition flex items-center gap-1.5"
+                            title="Confirmar que o valor entrou/saiu na conta hoje"
+                          >
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            Confirmar {mov.tipo === "ENTRADA" ? "Entrada" : "Saída"}
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => alternarStatusPoupanca(mov.id)}
+                            className="text-[11px] text-slate-400 hover:text-amber-700 border border-slate-200 hover:border-amber-300 px-2 py-1 rounded-lg"
+                            title="Alternar de volta para previsão"
+                          >
+                            Tornar Previsão
+                          </button>
+                        )}
+
+                        <button
+                          onClick={() => setPoupanca((prev) => prev.filter((p) => p.id !== mov.id))}
+                          className="text-slate-400 hover:text-rose-600 p-1"
+                          title="Excluir lançamento"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
                       </div>
                     </div>
-                    <div className="flex items-center gap-4">
-                      <span className={`font-bold ${mov.tipo === "ENTRADA" ? "text-emerald-600" : "text-rose-600"}`}>
-                        {mov.tipo === "ENTRADA" ? "+" : "-"} {formatarMoeda(mov.valor)}
-                      </span>
-                      <button onClick={() => setPoupanca((prev) => prev.filter((p) => p.id !== mov.id))} className="text-slate-400 hover:text-rose-600">
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           </div>
         )}
 
         {/* ========================================================= */}
-        {/* ABA 3: SALÁRIOS (LEGISLAÇÃO VIGENTE RS - VICTOR & LETÍCIA)  */}
+        {/* ABA 3: SALÁRIOS (DIVISÃO EM 2 LADOS: VICTOR & LETÍCIA)     */}
         {/* ========================================================= */}
         {aba === "salarios" && (
           <div className="space-y-6">
-            <div className="bg-blue-50 border border-blue-200 p-4 rounded-2xl flex items-start gap-3">
-              <Calculator className="w-5 h-5 text-blue-700 mt-0.5 shrink-0" />
-              <div className="text-xs text-blue-900 space-y-1">
-                <p className="font-bold">Base Legal Aplicada Automaticamente (RS & Federal 2026):</p>
-                <p>
-                  • <strong>Subsídio Sd 1ª Classe (CBMRS / BMRS):</strong> R$ 6.429,95 vigente desde 01/10/2026 (Lei Estadual nº 16.165/2024 - 3ª parcela de 4%, editável abaixo caso haja parcela completiva).
+            <div className="bg-slate-900 text-white p-5 rounded-2xl shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-lg font-bold">Salários & Previsionamento ({formatarMesAnoLabel(mesSelecionado)})</h2>
+                  <span className="bg-blue-500/20 text-blue-300 text-xs font-semibold px-2.5 py-0.5 rounded-full border border-blue-500/30">
+                    Legislação RS 2026
+                  </span>
+                </div>
+                <p className="text-xs text-slate-400 mt-1">
+                  Lado Esquerdo: Victor (CBMRS) • Lado Direito: Letícia (BMRS). Simule as regras salariais e confirme com o contracheque oficial do mês.
                 </p>
-                <p>
-                  • <strong>Descontos Legais:</strong> Previdência Militar RS (SPSMER - LC 15.602/21), IPE Saúde (3,6% titular) e IRRF 2026 (Tabela Progressiva + Redutor da Lei nº 15.270/2025 até R$ 7.350,00).
-                </p>
+              </div>
+
+              <div className="flex items-center gap-4 bg-slate-800/80 px-4 py-2.5 rounded-xl border border-slate-700">
+                <div className="text-right">
+                  <span className="text-[10px] uppercase text-slate-400 font-bold block">Total Disponível do Casal</span>
+                  <span className="text-xl font-black text-emerald-400">{formatarMoeda(salarioLiquidoTotalCasal)}</span>
+                  <span className="text-[10px] text-slate-400 block">
+                    (Previsto: {formatarMoeda(salarioPrevistoTotalCasal)})
+                  </span>
+                </div>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Card Victor (CBMRS) */}
+            {/* Divisão da tela em 2 lados: Esquerdo Victor / Direito Letícia */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+              {/* Lado Esquerdo: Victor (CBMRS) */}
               <SalarioCard
-                titulo="Victor Roque — Sd CBMRS"
+                titulo="Lado Esquerdo: Victor Roque — Sd CBMRS"
                 cor="blue"
                 params={salVictor}
                 onChange={setSalVictor}
                 resultado={resVictor}
+                mesAnoLabel={formatarMesAnoLabel(mesSelecionado)}
+                contrachequeConfirmado={contrachequeMes.victorConfirmado}
+                valorRealContracheque={contrachequeMes.victorValorReal}
+                onConfirmarContracheque={confirmarContrachequeVictor}
+                onReverterContracheque={reverterContrachequeVictor}
               />
 
-              {/* Card Letícia (BMRS) */}
+              {/* Lado Direito: Letícia (BMRS) */}
               <SalarioCard
-                titulo="Letícia Ribeiro — Sd BMRS"
+                titulo="Lado Direito: Letícia Ribeiro — Sd BMRS"
                 cor="purple"
                 params={salLeticia}
                 onChange={setSalLeticia}
                 resultado={resLeticia}
+                mesAnoLabel={formatarMesAnoLabel(mesSelecionado)}
+                contrachequeConfirmado={contrachequeMes.leticiaConfirmada}
+                valorRealContracheque={contrachequeMes.leticiaValorReal}
+                onConfirmarContracheque={confirmarContrachequeLeticia}
+                onReverterContracheque={reverterContrachequeLeticia}
               />
             </div>
           </div>
@@ -734,6 +1041,269 @@ export default function DashboardPage() {
                       ))}
                   </tbody>
                 </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ========================================================= */}
+        {/* ABA 5: CONTAS DA CASA & PROJEÇÃO 6 MESES                   */}
+        {/* ========================================================= */}
+        {aba === "contas" && (
+          <div className="space-y-6">
+            {/* Header da Aba com explicação */}
+            <div className="bg-slate-900 text-white p-6 rounded-2xl shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-xl font-bold">Contas da Casa & Projeção para 6 Meses</h2>
+                  <span className="bg-emerald-500/20 text-emerald-300 text-xs font-semibold px-2.5 py-0.5 rounded-full border border-emerald-500/30">
+                    Previsão Futura
+                  </span>
+                </div>
+                <p className="text-xs text-slate-400 mt-1">
+                  Projeta automaticamente contas fixas e parcelas futuras dos cartões. Ao receber a nova fatura do mês, confirme o valor exato fechado.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => setModalAberto(true)}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs px-4 py-2.5 rounded-xl shadow-sm transition inline-flex items-center gap-2"
+                >
+                  <Plus className="w-4 h-4" />
+                  Nova Conta / Importar Fatura
+                </button>
+              </div>
+            </div>
+
+            {/* Linha do Tempo: Cards dos Próximos 6 Meses */}
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                  <CalendarRange className="w-4 h-4 text-emerald-600" />
+                  Visão dos Próximos 6 Meses (Vencimentos)
+                </h3>
+                <span className="text-xs text-slate-500">Clique em um mês para detalhar abaixo</span>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                {projecao6Meses.map((proj) => {
+                  const isMesAtivo = mesVisualizadoContas === proj.mesAno;
+                  return (
+                    <button
+                      key={proj.mesAno}
+                      type="button"
+                      onClick={() => setMesVisualizadoContas(proj.mesAno)}
+                      className={`p-4 rounded-2xl border text-left transition-all ${
+                        isMesAtivo
+                          ? "bg-slate-900 text-white border-slate-900 shadow-md ring-2 ring-emerald-500"
+                          : "bg-white hover:bg-slate-50 border-slate-200 text-slate-800 shadow-sm"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between text-xs mb-1">
+                        <span className={`font-bold ${isMesAtivo ? "text-emerald-400" : "text-slate-600"}`}>
+                          {proj.label.split("/")[0]}
+                        </span>
+                        <span
+                          className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${
+                            proj.isConfirmado
+                              ? isMesAtivo
+                                ? "bg-emerald-500/20 text-emerald-300"
+                                : "bg-emerald-50 text-emerald-700"
+                              : isMesAtivo
+                              ? "bg-amber-500/20 text-amber-300"
+                              : "bg-amber-50 text-amber-700"
+                          }`}
+                        >
+                          {proj.isConfirmado ? "Confirmado" : "Previsto"}
+                        </span>
+                      </div>
+                      <p className="text-lg font-extrabold mt-1">
+                        {formatarMoeda(proj.totalGeral)}
+                      </p>
+                      <div
+                        className={`mt-2 pt-2 border-t text-[11px] space-y-0.5 ${
+                          isMesAtivo ? "border-slate-800 text-slate-400" : "border-slate-100 text-slate-500"
+                        }`}
+                      >
+                        <div className="flex justify-between">
+                          <span>Contas Fixas:</span>
+                          <span className="font-medium">{formatarMoeda(proj.totalContasFixas)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Cartões / Parc:</span>
+                          <span className="font-medium">{formatarMoeda(proj.totalFaturaC6 + proj.totalFaturaSicredi)}</span>
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Painel de Confirmação Rápida de Fatura do Mês Selecionado */}
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+                <div>
+                  <h3 className="font-bold text-base text-slate-800 flex items-center gap-2">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                    Confirmar Valor Real da Fatura de {formatarMesAnoLabel(mesVisualizadoContas)}
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Quando a fatura do cartão fechar, insira o valor exato para substituir as estimativas deste mês por um valor confirmado.
+                  </p>
+                </div>
+
+                {/* Status do mês visualizado */}
+                {mesConfirmadoInfo ? (
+                  <div className="flex items-center gap-2 bg-emerald-50 text-emerald-800 border border-emerald-200 px-3 py-1.5 rounded-xl text-xs font-bold">
+                    <span>✓ Fatura Fechada Confirmada: {formatarMoeda(mesConfirmadoInfo.valor)}</span>
+                    <button
+                      onClick={() => setContasCasa((prev) => prev.filter((c) => c.id !== mesConfirmadoInfo.id))}
+                      className="text-emerald-700 hover:text-rose-600 ml-2"
+                      title="Excluir confirmação e voltar para estimativa das parcelas"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ) : (
+                  <span className="bg-amber-50 text-amber-800 border border-amber-200 px-3 py-1.5 rounded-xl text-xs font-semibold">
+                    ⏳ Em Estimativa / Previsão das parcelas
+                  </span>
+                )}
+              </div>
+
+              {/* Formulário de Confirmação */}
+              <form onSubmit={handleConfirmarFaturaMes} className="grid grid-cols-1 sm:grid-cols-4 gap-3 pt-4 items-end">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1">Mês de Vencimento</label>
+                  <input
+                    type="month"
+                    value={mesVisualizadoContas}
+                    onChange={(e) => setMesVisualizadoContas(e.target.value)}
+                    className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm font-semibold text-slate-800"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1">Cartão / Banco</label>
+                  <select
+                    value={bancoFaturaConf}
+                    onChange={(e) => setBancoFaturaConf(e.target.value as CartaoBanco)}
+                    className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm"
+                  >
+                    <option value="C6 Bank">C6 Bank</option>
+                    <option value="Sicredi">Sicredi</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1">Valor Fechado Real (R$)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    required
+                    placeholder="0,00"
+                    value={valorFaturaConf}
+                    onChange={(e) => setValorFaturaConf(e.target.value)}
+                    className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 px-4 rounded-xl text-sm transition shadow-sm"
+                >
+                  Confirmar Valor do Mês
+                </button>
+              </form>
+            </div>
+
+            {/* Listas Detalhadas de Contas e Parcelas do Mês Selecionado */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Coluna 1: Contas Fixas do Mês */}
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+                  <h4 className="font-bold text-slate-800 text-sm">
+                    Contas Fixas da Casa ({formatarMesAnoLabel(mesVisualizadoContas)})
+                  </h4>
+                  <span className="text-xs font-bold text-slate-600">
+                    Total: {formatarMoeda(dadosMesVisualizado.totalContasFixas)}
+                  </span>
+                </div>
+                <div className="divide-y divide-slate-100">
+                  {dadosMesVisualizado.contas.length === 0 ? (
+                    <div className="p-8 text-center text-xs text-slate-400">
+                      Nenhuma conta fixa lançada para este mês.
+                    </div>
+                  ) : (
+                    dadosMesVisualizado.contas.map((c) => (
+                      <div key={c.id} className="px-6 py-3.5 flex items-center justify-between">
+                        <div>
+                          <p className="text-sm font-semibold text-slate-800">{c.descricao}</p>
+                          <p className="text-xs text-slate-500">
+                            Venc: {c.vencimento.split("-").reverse().join("/")} • {c.categoria} •{" "}
+                            {c.quemPaga === "DIV" ? "50/50" : c.quemPaga === "VIC" ? "Victor" : "Letícia"}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="font-bold text-slate-900">{formatarMoeda(c.valor)}</span>
+                          <button
+                            onClick={() => alternarPagoConta(c.id)}
+                            className={`text-xs px-2.5 py-1 rounded-lg font-bold border transition ${
+                              c.pago
+                                ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                : "bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100"
+                            }`}
+                          >
+                            {c.pago ? "Pago" : "Pendente"}
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              {/* Coluna 2: Parcelas Futuras Projetadas dos Cartões */}
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+                  <h4 className="font-bold text-slate-800 text-sm">
+                    Parcelas dos Cartões Previstas ({formatarMesAnoLabel(mesVisualizadoContas)})
+                  </h4>
+                  <span className="text-xs font-bold text-emerald-600">
+                    Total: {formatarMoeda(dadosMesVisualizado.totalFaturaC6 + dadosMesVisualizado.totalFaturaSicredi)}
+                  </span>
+                </div>
+                <div className="divide-y divide-slate-100 max-h-[420px] overflow-y-auto">
+                  {dadosMesVisualizado.parcelasProjetadas.length === 0 ? (
+                    <div className="p-8 text-center text-xs text-slate-400">
+                      Nenhuma parcela parcelada ativa prevista para este mês.
+                    </div>
+                  ) : (
+                    dadosMesVisualizado.parcelasProjetadas.map((p) => (
+                      <div key={p.id} className="px-6 py-3 flex items-center justify-between">
+                        <div>
+                          <p className="text-sm font-semibold text-slate-800">{p.descricao}</p>
+                          <p className="text-xs text-slate-500">
+                            {p.banco} • {p.titularCartao} • Parcela {p.parcelaAtual}/{p.totalParcelas}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <span className="font-bold text-slate-900 block">{formatarMoeda(p.valor)}</span>
+                          <span
+                            className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                              p.quemPaga === "VIC"
+                                ? "bg-blue-50 text-blue-700"
+                                : p.quemPaga === "LE"
+                                ? "bg-purple-50 text-purple-700"
+                                : "bg-amber-50 text-amber-700"
+                            }`}
+                          >
+                            {p.quemPaga}
+                          </span>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -884,14 +1454,32 @@ function SalarioCard({
   params,
   onChange,
   resultado,
+  mesAnoLabel,
+  contrachequeConfirmado,
+  valorRealContracheque,
+  onConfirmarContracheque,
+  onReverterContracheque,
 }: {
   titulo: string;
   cor: "blue" | "purple";
   params: ParametrosSalario;
   onChange: (p: ParametrosSalario) => void;
   resultado: ReturnType<typeof calcularContrachequeRS>;
+  mesAnoLabel: string;
+  contrachequeConfirmado: boolean;
+  valorRealContracheque: number;
+  onConfirmarContracheque: (valor: number) => void;
+  onReverterContracheque: () => void;
 }) {
   const badgeColor = cor === "blue" ? "bg-blue-600" : "bg-purple-600";
+  const [inputVal, setInputVal] = useState<string>(() => resultado.totalDisponivelMes.toFixed(2));
+
+  // Sincroniza o valor sugerido se mudar a simulação e não estiver confirmado
+  useEffect(() => {
+    if (!contrachequeConfirmado) {
+      setInputVal(resultado.totalDisponivelMes.toFixed(2));
+    }
+  }, [resultado.totalDisponivelMes, contrachequeConfirmado]);
 
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
@@ -1080,6 +1668,74 @@ function SalarioCard({
               <div className="flex justify-between font-bold text-slate-900 pt-1 border-t border-slate-200">
                 <span>Total Disponível no Mês:</span>
                 <span>{formatarMoeda(resultado.totalDisponivelMes)}</span>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Confirmação do Contracheque Real do Mês */}
+        <div className="mt-4 p-4 rounded-xl border border-slate-200 bg-slate-50 space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-700">
+              Contracheque Oficial ({mesAnoLabel})
+            </span>
+            <span
+              className={`text-[11px] font-bold px-2 py-0.5 rounded-full border ${
+                contrachequeConfirmado
+                  ? "bg-emerald-100 text-emerald-800 border-emerald-300"
+                  : "bg-amber-100 text-amber-800 border-amber-300"
+              }`}
+            >
+              {contrachequeConfirmado ? "✓ Confirmado no Mês" : "⏳ Previsão / Simulador"}
+            </span>
+          </div>
+
+          {contrachequeConfirmado ? (
+            <div className="space-y-2 bg-emerald-50/60 p-3 rounded-lg border border-emerald-200">
+              <div className="flex justify-between items-center">
+                <span className="text-xs text-emerald-900 font-semibold">Valor Real Recebido:</span>
+                <span className="text-base font-black text-emerald-700">
+                  {formatarMoeda(valorRealContracheque)}
+                </span>
+              </div>
+              <div className="flex justify-between items-center text-xs text-slate-500 pt-1 border-t border-emerald-200/60">
+                <span>Previsão Calculada: {formatarMoeda(resultado.totalDisponivelMes)}</span>
+                <span className={valorRealContracheque >= resultado.totalDisponivelMes ? "text-emerald-700 font-bold" : "text-rose-600 font-bold"}>
+                  Diferença: {formatarMoeda(valorRealContracheque - resultado.totalDisponivelMes)}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={onReverterContracheque}
+                className="w-full mt-2 py-1.5 px-3 bg-white hover:bg-slate-100 text-slate-700 font-semibold text-xs rounded-lg border border-slate-300 transition"
+              >
+                Editar ou Voltar para Previsão Calculada
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <p className="text-xs text-slate-500">
+                Insira o valor líquido exato que veio no contracheque para confirmar e consolidar o mês.
+              </p>
+              <div className="flex gap-2">
+                <input
+                  type="number"
+                  step="0.01"
+                  placeholder="0,00"
+                  value={inputVal}
+                  onChange={(e) => setInputVal(e.target.value)}
+                  className="flex-1 border border-slate-300 rounded-xl px-3 py-1.5 text-sm font-semibold"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const val = parseFloat(inputVal.replace(",", "."));
+                    if (!isNaN(val) && val > 0) onConfirmarContracheque(val);
+                  }}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-3.5 py-1.5 rounded-xl transition shadow-sm"
+                >
+                  Confirmar Valor
+                </button>
               </div>
             </div>
           )}
