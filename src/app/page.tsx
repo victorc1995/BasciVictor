@@ -714,17 +714,17 @@ export default function DashboardPage() {
     };
   }, [poupanca]);
 
-  // Lançamentos Confirmados (Realizado) e Previsões Futuras (ordenados estritamente da data mais recente para a mais antiga)
+  // Lançamentos Confirmados (Realizado: mais recente para a mais antiga) e Previsões Futuras (da data mais próxima para a mais longe)
   const poupancaRealizados = useMemo(() => {
     return [...poupanca]
       .filter((p) => p.status === "CONFIRMADO")
-      .sort((a, b) => b.data.localeCompare(a.data));
+      .sort((a, b) => (b.data || "").localeCompare(a.data || ""));
   }, [poupanca]);
 
   const poupancaPrevistos = useMemo(() => {
     return [...poupanca]
       .filter((p) => p.status === "PREVISTO")
-      .sort((a, b) => b.data.localeCompare(a.data));
+      .sort((a, b) => (a.data || "").localeCompare(b.data || ""));
   }, [poupanca]);
 
   // Projeção dos Próximos 6 Meses para a Aba 5 Contas
@@ -1909,7 +1909,7 @@ export default function DashboardPage() {
               mesSelecionado={mesSelecionado}
               mesAtual={mesAtualReal}
               onSelecionarMes={handleSelecionarMes}
-              subtitulo="Extrato contínuo da poupança e previsões futuras (ordem da mais recente para a mais antiga)"
+              subtitulo="Extrato contínuo da poupança (realizados da mais recente à mais antiga) e previsões futuras (da data mais próxima à mais distante)"
               modoDark={false}
             />
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -2185,7 +2185,7 @@ export default function DashboardPage() {
                     </span>
                   </div>
                   <p className="text-xs text-slate-500 mt-0.5">
-                    Previsões de receitas e saídas futuras • Ordem: mais recente para o mais antigo • Confirme com 1 clique no dia
+                    Previsões de receitas e saídas futuras • Ordem: da data mais próxima para a mais distante da data atual • Confirme com 1 clique no dia
                   </p>
                 </div>
                 <div className="flex items-center gap-3">
