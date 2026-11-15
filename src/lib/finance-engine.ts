@@ -203,12 +203,14 @@ export interface ContrachequeConfirmadoMes {
   victorGanhosExtras?: number;
   victorSalarioLiquidoFinal?: number;
   victorDiferencaCC?: number;
+  victorParams?: ParametrosSalario;
   leticiaConfirmada: boolean;
   leticiaValorReal: number;
   leticiaExtras?: RendimentoExtraItem[];
   leticiaGanhosExtras?: number;
   leticiaSalarioLiquidoFinal?: number;
   leticiaDiferencaCC?: number;
+  leticiaParams?: ParametrosSalario;
 }
 
 export interface ProjecaoMesContas {

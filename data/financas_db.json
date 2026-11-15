@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-11-15T13:57:25.503Z",
+  "updatedAt": "2026-11-15T14:52:43.455Z",
   "data": {
     "contasCasa": [
       {
@@ -719,10 +719,10 @@
     "salVictor": {
       "subsídioBase": 6429.95,
       "tipoSubstituicao": "1_SGT",
-      "diasSubstituicao": 0,
+      "diasSubstituicao": 300,
       "horasExtrasQtd": 0,
       "diasFerias": 0,
-      "diariasQtd": 9,
+      "diariasQtd": 0,
       "descontoBanrisul": 1507.35,
       "outrosDescontosFixos": 123.12,
       "incluirValeRefeicao": false,
@@ -737,7 +737,7 @@
       "diariasQtd": 0,
       "descontoBanrisul": 1145.89,
       "outrosDescontosFixos": 0,
-      "incluirValeRefeicao": true,
+      "incluirValeRefeicao": false,
       "dependentesIR": 0
     },
     "comprasCartao": [
@@ -1597,11 +1597,21 @@
       },
       "2026-11": {
         "victorConfirmado": true,
-        "victorValorReal": 4573.57,
-        "victorSalarioLiquidoFinal": 5417.49,
+        "victorValorReal": 4703.11,
         "leticiaConfirmada": true,
-        "leticiaValorReal": 4657.44,
-        "leticiaSalarioLiquidoFinal": 5501.36
+        "leticiaValorReal": 4692.89,
+        "leticiaSalarioLiquidoFinal": 4692.89,
+        "leticiaDiferencaCC": 35.45000000000073,
+        "victorSalarioLiquidoFinal": 5003.11,
+        "victorDiferencaCC": 129.53999999999996,
+        "victorExtras": [
+          {
+            "id": "1794754334175",
+            "descricao": "Emprestimo mae",
+            "valor": 300
+          }
+        ],
+        "victorGanhosExtras": 300
       },
       "2026-12": {
         "victorConfirmado": false,

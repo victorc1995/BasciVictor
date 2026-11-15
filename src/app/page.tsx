@@ -162,6 +162,8 @@ export default function DashboardPage() {
   const [syncStatus, setSyncStatus] = useState<"sincronizado" | "salvando" | "offline" | "carregando">("carregando");
   const [ultimaSincronizacao, setUltimaSincronizacao] = useState<string | null>(null);
   const isCarregandoServidorRef = useRef(false);
+  const ultimaEdicaoLocalRef = useRef<number>(0);
+  const estaSalvandoRef = useRef<boolean>(false);
 
   // Aplica dados sanitizados aos estados do React
   const aplicarDados = (parsed: any) => {
@@ -242,11 +244,19 @@ export default function DashboardPage() {
 
   // Carrega a versão mais recente do servidor (/api/finance-data)
   const carregarDoServidor = async (silencioso = false) => {
+    // Se o usuário realizou uma edição local nos últimos 6 segundos ou está salvando, NÃO sobrescreve com dados do servidor
+    if (Date.now() - ultimaEdicaoLocalRef.current < 6000 || estaSalvandoRef.current) {
+      return;
+    }
     try {
       if (!silencioso) setSyncStatus("carregando");
       const res = await fetch("/api/finance-data");
       if (res.ok) {
         const json = await res.json();
+        // Se durante a requisição o usuário realizou uma edição local, descarta a resposta para não perder inputs
+        if (Date.now() - ultimaEdicaoLocalRef.current < 6000 || estaSalvandoRef.current) {
+          return;
+        }
         if (json.success && json.data) {
           isCarregandoServidorRef.current = true;
           aplicarDados(json.data);
@@ -320,6 +330,9 @@ export default function DashboardPage() {
       return;
     }
 
+    ultimaEdicaoLocalRef.current = Date.now();
+    estaSalvandoRef.current = true;
+
     const payload = {
       contasCasa,
       poupanca,
@@ -334,7 +347,7 @@ export default function DashboardPage() {
     // Salva imediatamente em LocalStorage
     localStorage.setItem("financas_victor_leticia_v3", JSON.stringify(payload));
 
-    // Debounce de 600ms para salvar no servidor (/api/finance-data)
+    // Debounce de 400ms para salvar no servidor (/api/finance-data)
     setSyncStatus("salvando");
     const timer = setTimeout(async () => {
       try {
@@ -352,11 +365,66 @@ export default function DashboardPage() {
       } catch (e) {
         console.warn("Falha ao salvar no servidor central:", e);
         setSyncStatus("offline");
+      } finally {
+        estaSalvandoRef.current = false;
       }
-    }, 600);
+    }, 400);
 
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+    };
   }, [contasCasa, poupanca, salVictor, salLeticia, comprasCartao, contracheques, faturasPagas, contasExcluidas, carregado]);
+
+  // Sincroniza parâmetros de simulação salvos para o mês específico selecionado
+  useEffect(() => {
+    const cc = contracheques[mesSelecionado];
+    if (cc?.victorParams) {
+      setSalVictor(cc.victorParams);
+    }
+    if (cc?.leticiaParams) {
+      setSalLeticia(cc.leticiaParams);
+    }
+  }, [mesSelecionado]);
+
+  const handleAtualizarSalVictor = (novo: ParametrosSalario) => {
+    ultimaEdicaoLocalRef.current = Date.now();
+    setSalVictor(novo);
+    setContracheques((prev) => {
+      const atual = prev[mesSelecionado] || {
+        victorConfirmado: false,
+        victorValorReal: resVictor.liquidoFolha,
+        leticiaConfirmada: false,
+        leticiaValorReal: resLeticia.liquidoFolha,
+      };
+      return {
+        ...prev,
+        [mesSelecionado]: {
+          ...atual,
+          victorParams: novo,
+        },
+      };
+    });
+  };
+
+  const handleAtualizarSalLeticia = (novo: ParametrosSalario) => {
+    ultimaEdicaoLocalRef.current = Date.now();
+    setSalLeticia(novo);
+    setContracheques((prev) => {
+      const atual = prev[mesSelecionado] || {
+        victorConfirmado: false,
+        victorValorReal: resVictor.liquidoFolha,
+        leticiaConfirmada: false,
+        leticiaValorReal: resLeticia.liquidoFolha,
+      };
+      return {
+        ...prev,
+        [mesSelecionado]: {
+          ...atual,
+          leticiaParams: novo,
+        },
+      };
+    });
+  };
 
   // Cálculos de Salários (Legislação RS 2026)
   const resVictor = useMemo(() => calcularContrachequeRS(salVictor), [salVictor]);
@@ -406,6 +474,7 @@ export default function DashboardPage() {
     valorFinalLiquido: number,
     diferencaCC?: number
   ) => {
+    ultimaEdicaoLocalRef.current = Date.now();
     setContracheques((prev) => {
       const atual = prev[mesSelecionado] || {
         leticiaConfirmada: false,
@@ -419,12 +488,14 @@ export default function DashboardPage() {
           victorValorReal: valorFolha,
           victorSalarioLiquidoFinal: valorFinalLiquido,
           victorDiferencaCC: diferencaCC,
+          victorParams: salVictor,
         },
       };
     });
   };
 
   const reverterSalarioVictor = () => {
+    ultimaEdicaoLocalRef.current = Date.now();
     setContracheques((prev) => {
       const atual = prev[mesSelecionado];
       if (!atual) return prev;
@@ -445,6 +516,7 @@ export default function DashboardPage() {
     valorFinalLiquido: number,
     diferencaCC?: number
   ) => {
+    ultimaEdicaoLocalRef.current = Date.now();
     setContracheques((prev) => {
       const atual = prev[mesSelecionado] || {
         victorConfirmado: false,
@@ -458,12 +530,14 @@ export default function DashboardPage() {
           leticiaValorReal: valorFolha,
           leticiaSalarioLiquidoFinal: valorFinalLiquido,
           leticiaDiferencaCC: diferencaCC,
+          leticiaParams: salLeticia,
         },
       };
     });
   };
 
   const reverterSalarioLeticia = () => {
+    ultimaEdicaoLocalRef.current = Date.now();
     setContracheques((prev) => {
       const atual = prev[mesSelecionado];
       if (!atual) return prev;
@@ -2231,7 +2305,7 @@ export default function DashboardPage() {
                 titulo="Victor Roque"
                 cor="blue"
                 params={salVictor}
-                onChange={setSalVictor}
+                onChange={handleAtualizarSalVictor}
                 resultado={resVictor}
                 mesAnoLabel={formatarMesAnoLabel(mesSelecionado)}
                 mesAno={mesSelecionado}
@@ -2251,7 +2325,7 @@ export default function DashboardPage() {
                 titulo="Letícia Roque"
                 cor="purple"
                 params={salLeticia}
-                onChange={setSalLeticia}
+                onChange={handleAtualizarSalLeticia}
                 resultado={resLeticia}
                 mesAnoLabel={formatarMesAnoLabel(mesSelecionado)}
                 mesAno={mesSelecionado}
@@ -4445,13 +4519,15 @@ function SalarioCard({
               <label className="block text-[11px] font-semibold text-slate-600 mb-1">Substituição de Posto</label>
               <select
                 value={params.tipoSubstituicao}
-                onChange={(e) =>
+                onChange={(e) => {
+                  const novoTipo = e.target.value as ParametrosSalario["tipoSubstituicao"];
+                  const novosDias = novoTipo === "NENHUMA" ? 0 : (params.diasSubstituicao > 0 ? params.diasSubstituicao : 30);
                   onChange({
                     ...params,
-                    tipoSubstituicao: e.target.value as ParametrosSalario["tipoSubstituicao"],
-                    diasSubstituicao: e.target.value === "NENHUMA" ? 0 : 30,
-                  })
-                }
+                    tipoSubstituicao: novoTipo,
+                    diasSubstituicao: novosDias,
+                  });
+                }}
                 className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs bg-white"
               >
                 <option value="NENHUMA">Sem Substituição</option>
@@ -4469,9 +4545,22 @@ function SalarioCard({
                 type="number"
                 min={0}
                 max={30}
-                value={params.diasSubstituicao}
-                onChange={(e) => onChange({ ...params, diasSubstituicao: parseInt(e.target.value) || 0 })}
-                className="w-full border border-slate-300 rounded-lg px-2 py-1 text-xs bg-white"
+                value={params.diasSubstituicao === 0 && params.tipoSubstituicao === "NENHUMA" ? "" : params.diasSubstituicao}
+                placeholder="0"
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  const val = raw === "" ? 0 : parseInt(raw, 10);
+                  const dias = isNaN(val) ? 0 : Math.min(30, Math.max(0, val));
+                  const novoTipo = dias > 0 && params.tipoSubstituicao === "NENHUMA"
+                    ? (cor === "blue" ? "1_SGT" : "2_SGT")
+                    : params.tipoSubstituicao;
+                  onChange({
+                    ...params,
+                    tipoSubstituicao: novoTipo,
+                    diasSubstituicao: dias,
+                  });
+                }}
+                className="w-full border border-slate-300 rounded-lg px-2 py-1 text-xs bg-white font-semibold"
               />
             </div>
             <div>
