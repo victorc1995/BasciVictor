@@ -13,6 +13,14 @@ if (typeof Promise !== "undefined" && !(Promise as any).withResolvers) {
   };
 }
 
+interface ItemTextoPDF {
+  str: string;
+  x: number;
+  y: number;
+  w?: number;
+  h?: number;
+}
+
 export interface DadosContaDetectada {
   descricao: string;
   categoria: ContaCasa["categoria"];
@@ -118,8 +126,29 @@ export async function extrairTextoDePDF(file: File, senhaUsuario?: string): Prom
   for (let i = 1; i <= totalPaginas; i++) {
     const page = await doc.getPage(i);
     const content = await page.getTextContent();
-    const strings = content.items.map((item: any) => item.str);
-    textoCompleto += strings.join(" ") + "\n";
+    const items: ItemTextoPDF[] = content.items
+      .map((it: any) => ({
+        str: (it.str || "").trim(),
+        x: Math.round(it.transform?.[4] || 0),
+        y: Math.round(it.transform?.[5] || 0),
+      }))
+      .filter((it: any) => it.str.length > 0);
+
+    // Agrupa e ordena itens em linhas visuais reais (Y decrescente, X crescente)
+    const linesMap: { y: number; items: ItemTextoPDF[] }[] = [];
+    for (const it of items) {
+      let line = linesMap.find((l) => Math.abs(l.y - it.y) <= 4);
+      if (!line) {
+        line = { y: it.y, items: [] };
+        linesMap.push(line);
+      }
+      line.items.push(it);
+    }
+    linesMap.sort((a, b) => b.y - a.y);
+    for (const line of linesMap) {
+      line.items.sort((a, b) => a.x - b.x);
+      textoCompleto += line.items.map((it) => it.str).join(" ") + "\n";
+    }
   }
 
   return textoCompleto;
@@ -643,113 +672,196 @@ export async function extrairDadosContrachequePDF(
   competencia?: string;
   textoCompleto: string;
 }> {
-  const texto = await extrairTextoDePDF(file);
-  const upper = texto.toUpperCase();
-
-  // 1. Detectar titular
-  let titularDetectado: "Victor" | "Leticia" | undefined = titularPadrao;
-  if (upper.includes("VICTOR") || upper.includes("ROQUE")) {
-    titularDetectado = "Victor";
-  } else if (upper.includes("LETICIA") || upper.includes("LETÍCIA") || upper.includes("RIBEIRO")) {
-    titularDetectado = "Leticia";
+  const pdfjsLib = await import("pdfjs-dist");
+  if (typeof window !== "undefined") {
+    try {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
+    } catch {}
   }
 
-  // 2. Detectar competência / mês (ex: 10/2026, 11/2026, OUT/2026)
-  let competencia: string | undefined;
-  const matchComp = texto.match(/(\d{2}\/20\d{2})/);
-  if (matchComp) {
-    competencia = matchComp[1];
-  }
+  const arrayBuffer = await file.arrayBuffer();
+  const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) });
+  const doc = await loadingTask.promise;
 
-  // 3. Extrair estritamente o LÍQUIDO A RECEBER
   let valorLiquido = 0;
+  let titularDetectado: "Victor" | "Leticia" | undefined = titularPadrao;
+  let competencia: string | undefined;
+  let textoCompleto = "";
 
-  // ESTRATÉGIA 1 (Matemática da Folha de Pagamento): Vencimentos (Bruto) - Descontos = Líquido a Receber
-  // Busca por 3 valores decimais consecutivos onde V1 - V2 = V3
-  const regexValor = /\b(\d{1,3}(?:\.\d{3})*,\d{2})\b/g;
-  const todosValores: { valor: number; index: number }[] = [];
-  let mVal: RegExpExecArray | null;
-  while ((mVal = regexValor.exec(texto)) !== null) {
-    const num = parseFloat(mVal[1].replace(/\./g, "").replace(",", "."));
-    if (num > 0) {
-      todosValores.push({ valor: num, index: mVal.index });
+  for (let pageNum = 1; pageNum <= doc.numPages; pageNum++) {
+    const page = await doc.getPage(pageNum);
+    const content = await page.getTextContent();
+
+    // 1. Coleta todos os itens de texto com suas coordenadas geométricas 2D (X, Y)
+    const items: ItemTextoPDF[] = content.items
+      .map((it: any) => ({
+        str: (it.str || "").trim(),
+        x: Math.round(it.transform?.[4] || 0),
+        y: Math.round(it.transform?.[5] || 0),
+        w: Math.round(it.width || 0),
+        h: Math.round(it.height || 0),
+      }))
+      .filter((it: any) => it.str.length > 0);
+
+    // 2. Reconstrói o texto ordenado em linhas visuais reais (Y decrescente, X crescente)
+    const linesMap: { y: number; items: ItemTextoPDF[] }[] = [];
+    for (const it of items) {
+      let line = linesMap.find((l) => Math.abs(l.y - it.y) <= 4);
+      if (!line) {
+        line = { y: it.y, items: [] };
+        linesMap.push(line);
+      }
+      line.items.push(it);
     }
-  }
+    linesMap.sort((a, b) => b.y - a.y);
+    for (const line of linesMap) {
+      line.items.sort((a, b) => a.x - b.x);
+      textoCompleto += line.items.map((it) => it.str).join(" ") + "\n";
+    }
 
-  for (let i = 0; i < todosValores.length - 2; i++) {
-    const v1 = todosValores[i].valor;     // Total Vencimentos / Bruto
-    const v2 = todosValores[i + 1].valor; // Total Descontos
-    const v3 = todosValores[i + 2].valor; // Líquido a Receber
+    const upperPage = textoCompleto.toUpperCase();
 
-    if (v1 > 500 && v2 > 0 && v3 > 500) {
-      if (Math.abs((v1 - v2) - v3) <= 0.08) {
-        valorLiquido = v3;
-        break;
+    // Detectar titular
+    if (!titularDetectado) {
+      if (upperPage.includes("VICTOR") || upperPage.includes("ROQUE")) {
+        titularDetectado = "Victor";
+      } else if (
+        upperPage.includes("LETICIA") ||
+        upperPage.includes("LETÍCIA") ||
+        upperPage.includes("RIBEIRO")
+      ) {
+        titularDetectado = "Leticia";
       }
     }
+
+    // Detectar competência
+    if (!competencia) {
+      const matchComp = textoCompleto.match(/(\d{2}\/20\d{2})/);
+      if (matchComp) competencia = matchComp[1];
+    }
+
+    // 3. ESTRATÉGIA GEOMÉTRICA 2D (PROCERGS / Estado do RS / Militares RS)
+    // Procura o rótulo "LÍQUIDO A RECEBER"
+    const labelItems = items.filter((it) =>
+      /l[ií]quido\s+(?:a\s+)?receber/i.test(it.str) ||
+      /valor\s+l[ií]quido/i.test(it.str) ||
+      /total\s+l[ií]quido/i.test(it.str)
+    );
+
+    for (const label of labelItems) {
+      // 3A. Procura número diretamente ABAIXO do rótulo na caixa de valor correspondente
+      // (delta Y entre 5 e 45 unidades abaixo, delta X alinhado na coluna)
+      const candidatosAbaixo = items.filter(
+        (it) =>
+          it.y < label.y &&
+          it.y >= label.y - 45 &&
+          it.x >= label.x - 60 &&
+          it.x <= label.x + 220 &&
+          /^\d{1,3}(?:\.\d{3})*,\d{2}$/.test(it.str)
+      );
+
+      if (candidatosAbaixo.length > 0) {
+        // Ordena pela maior proximidade vertical com o rótulo
+        candidatosAbaixo.sort((a, b) => (label.y - a.y) - (label.y - b.y));
+        const val = parseFloat(candidatosAbaixo[0].str.replace(/\./g, "").replace(",", "."));
+        if (val > 100 && val < 60000) {
+          valorLiquido = val;
+          break;
+        }
+      }
+
+      // 3B. Procura número diretamente À DIREITA do rótulo na mesma linha
+      const candidatosLado = items.filter(
+        (it) =>
+          Math.abs(it.y - label.y) <= 10 &&
+          it.x > label.x &&
+          it.x <= label.x + 250 &&
+          /^\d{1,3}(?:\.\d{3})*,\d{2}$/.test(it.str)
+      );
+
+      if (candidatosLado.length > 0) {
+        candidatosLado.sort((a, b) => a.x - b.x);
+        const val = parseFloat(candidatosLado[0].str.replace(/\./g, "").replace(",", "."));
+        if (val > 100 && val < 60000) {
+          valorLiquido = val;
+          break;
+        }
+      }
+    }
+
+    if (valorLiquido > 0) break;
+
+    // 4. ESTRATÉGIA POR LINHAS VISUAIS (Quando os labels estão na linha superior e valores na linha imediatamente inferior)
+    for (let lIdx = 0; lIdx < linesMap.length - 1; lIdx++) {
+      const lineLabel = linesMap[lIdx];
+      const labelColIdx = lineLabel.items.findIndex((it) =>
+        /l[ií]quido\s+(?:a\s+)?receber/i.test(it.str)
+      );
+      if (labelColIdx >= 0) {
+        const nextLine = linesMap[lIdx + 1];
+        // Pega valores numéricos da linha de valores
+        const numsNextLine = nextLine.items.filter((it) =>
+          /^\d{1,3}(?:\.\d{3})*,\d{2}$/.test(it.str)
+        );
+        if (numsNextLine.length > 0) {
+          // No PROCERGS, LÍQUIDO A RECEBER é a última coluna da linha inferior
+          const ultimoNum = numsNextLine[numsNextLine.length - 1];
+          const val = parseFloat(ultimoNum.str.replace(/\./g, "").replace(",", "."));
+          if (val > 100 && val < 60000) {
+            valorLiquido = val;
+            break;
+          }
+        }
+      }
+    }
+
+    if (valorLiquido > 0) break;
   }
 
-  // ESTRATÉGIA 2: Rótulo exato "LÍQUIDO A RECEBER" na mesma linha
+  // 5. ESTRATÉGIA DE FALLBACK POR REGEX NO TEXTO VISUAL RECONSTRUÍDO
   if (valorLiquido === 0) {
     const rxMesmaLinha =
       /(?:VALOR\s+)?L[IÍ]QUIDO\s+(?:A\s+RECEBER|A\s+PAGAR|CREDITAR)[^\d\n\r]{0,35}?(?:R\$\s*)?(\d{1,3}(?:\.\d{3})*,\d{2})/i;
-    const matchML = upper.match(rxMesmaLinha);
+    const matchML = textoCompleto.toUpperCase().match(rxMesmaLinha);
     if (matchML && matchML[1]) {
       const v = parseFloat(matchML[1].replace(/\./g, "").replace(",", "."));
-      if (v > 0 && v < 50000) {
+      if (v > 100 && v < 60000) {
         valorLiquido = v;
       }
     }
   }
 
-  // ESTRATÉGIA 3: Linha de totais multi-coluna (ex: VENCIMENTOS ... DESCONTOS ... LIQUIDO A RECEBER)
+  // 6. ESTRATÉGIA MATEMÁTICA DA FOLHA (Total Vantagens - Total Descontos = Líquido a Receber)
   if (valorLiquido === 0) {
-    const matchBloco = upper.match(/L[IÍ]QUIDO\s+(?:A\s+RECEBER|A\s+PAGAR|CREDITAR)[\s\S]{1,100}/);
-    if (matchBloco) {
-      const nums = matchBloco[0].match(/\b(\d{1,3}(?:\.\d{3})*,\d{2})\b/g);
-      if (nums && nums.length > 0) {
-        const candidatos = nums.map((x) => parseFloat(x.replace(/\./g, "").replace(",", ".")));
-        if (candidatos.length >= 3 && Math.abs((candidatos[0] - candidatos[1]) - candidatos[2]) <= 0.08) {
-          valorLiquido = candidatos[2];
-        } else {
-          valorLiquido = candidatos[candidatos.length - 1];
-        }
-      }
+    const regexValor = /\b(\d{1,3}(?:\.\d{3})*,\d{2})\b/g;
+    const todosValores: number[] = [];
+    let mVal: RegExpExecArray | null;
+    while ((mVal = regexValor.exec(textoCompleto)) !== null) {
+      const num = parseFloat(mVal[1].replace(/\./g, "").replace(",", "."));
+      if (num > 0) todosValores.push(num);
     }
-  }
 
-  // ESTRATÉGIA 4: Procura linha a linha contendo "LIQUIDO A RECEBER"
-  if (valorLiquido === 0) {
-    const linhas = texto.split("\n");
-    for (let idx = 0; idx < linhas.length; idx++) {
-      const linha = linhas[idx].toUpperCase();
-      if (
-        linha.includes("LIQUIDO A RECEBER") ||
-        linha.includes("LÍQUIDO A RECEBER") ||
-        linha.includes("LIQUIDO RECEBER") ||
-        linha.includes("VALOR LIQUIDO") ||
-        linha.includes("VALOR LÍQUIDO")
-      ) {
-        const m1 = linha.match(/(?:R\$\s*)?(\d{1,3}(?:\.\d{3})*,\d{2})/);
-        if (m1) {
-          const v = parseFloat(m1[1].replace(/\./g, "").replace(",", "."));
-          if (v > 0 && v < 50000) {
-            valorLiquido = v;
+    // Procura por triplet {Bruto, Descontos, Liquido} onde Bruto - Descontos = Liquido
+    for (let i = 0; i < todosValores.length; i++) {
+      for (let j = 0; j < todosValores.length; j++) {
+        if (i === j) continue;
+        const bruto = todosValores[i];
+        const sub = todosValores[j];
+        if (bruto > sub && bruto > 1000) {
+          const diff = Number((bruto - sub).toFixed(2));
+          // Verifica se diff existe na lista de valores
+          const encontrouDiff = todosValores.some(
+            (v, k) => k !== i && k !== j && Math.abs(v - diff) <= 0.08
+          );
+          if (encontrouDiff) {
+            // Em contracheques militares normais, o Líquido costuma ser a diferença entre Bruto e Descontos
+            // Se sub < diff, sub geralmente é Descontos e diff é Líquido
+            valorLiquido = Math.max(sub, diff);
             break;
           }
         }
-        if (idx + 1 < linhas.length) {
-          const prox = linhas[idx + 1].toUpperCase();
-          const m2 = prox.match(/(?:R\$\s*)?(\d{1,3}(?:\.\d{3})*,\d{2})/);
-          if (m2) {
-            const v = parseFloat(m2[1].replace(/\./g, "").replace(",", "."));
-            if (v > 0 && v < 50000) {
-              valorLiquido = v;
-              break;
-            }
-          }
-        }
       }
+      if (valorLiquido > 0) break;
     }
   }
 
@@ -757,6 +869,6 @@ export async function extrairDadosContrachequePDF(
     valorLiquido,
     titularDetectado,
     competencia,
-    textoCompleto: texto,
+    textoCompleto,
   };
 }

@@ -36,12 +36,34 @@ export const INITIAL_CONTRACHEQUES: Record<string, ContrachequeConfirmadoMes> = 
 };
 
 export const INITIAL_CONTAS_CASA: ContaCasa[] = [
+  // ==========================================
+  // NOVEMBRO / 2026
+  // ==========================================
   { id: "c1", mesAno: "2026-11", descricao: "Aluguel + IPTU", categoria: "Aluguel", valor: 1444.35, vencimento: "2026-11-05", quemPaga: "DIV", pago: true, status: "CONFIRMADO", recorrente: true },
   { id: "c2", mesAno: "2026-11", descricao: "Internet Residencial (Vero)", categoria: "Internet", valor: 135.69, vencimento: "2026-11-15", quemPaga: "DIV", pago: false, status: "CONFIRMADO", recorrente: true },
   { id: "c3", mesAno: "2026-11", descricao: "Energia Elétrica (CEEE Luz)", categoria: "Luz", valor: 301.18, vencimento: "2026-11-20", quemPaga: "DIV", pago: false, status: "CONFIRMADO", recorrente: true },
   { id: "c4", mesAno: "2026-11", descricao: "Água / Saneamento (Corsan)", categoria: "Água", valor: 90.00, vencimento: "2026-11-20", quemPaga: "DIV", pago: false, status: "CONFIRMADO", recorrente: true },
   { id: "c5", mesAno: "2026-11", descricao: "Parcela Financiamento Carro", categoria: "Carro", valor: 1100.00, vencimento: "2026-11-20", quemPaga: "DIV", pago: false, status: "CONFIRMADO", recorrente: true },
   { id: "c6", mesAno: "2026-11", descricao: "Telefone Celular Vivo", categoria: "Telefone", valor: 64.00, vencimento: "2026-11-10", quemPaga: "VIC", pago: true, status: "CONFIRMADO", recorrente: true },
+
+  // ==========================================
+  // DEZEMBRO / 2026 (Novas Contas Fixas em Vigor)
+  // ==========================================
+  { id: "c-dez-aluguel", mesAno: "2026-12", descricao: "Aluguel Residencial", categoria: "Aluguel", valor: 1450.00, vencimento: "2026-12-02", quemPaga: "DIV", pago: false, status: "PREVISTO", recorrente: true },
+  { id: "c-dez-agua", mesAno: "2026-12", descricao: "Água / Saneamento (Corsan)", categoria: "Água", valor: 120.00, vencimento: "2026-12-20", quemPaga: "DIV", pago: false, status: "PREVISTO", recorrente: true },
+  { id: "c-dez-internet", mesAno: "2026-12", descricao: "Internet Residencial (Vero)", categoria: "Internet", valor: 135.00, vencimento: "2026-12-15", quemPaga: "DIV", pago: false, status: "PREVISTO", recorrente: true },
+  { id: "c-dez-luz", mesAno: "2026-12", descricao: "Energia Elétrica (Luz)", categoria: "Luz", valor: 350.00, vencimento: "2026-12-20", quemPaga: "DIV", pago: false, status: "PREVISTO", recorrente: true },
+  { id: "c-dez-tel", mesAno: "2026-12", descricao: "Telefone Celular Vivo", categoria: "Telefone", valor: 64.00, vencimento: "2026-12-10", quemPaga: "VIC", pago: false, status: "PREVISTO", recorrente: true },
+
+  // ==========================================
+  // JANEIRO / 2027 (Entrada do Carro R$ 1.750 em 12/01/2027)
+  // ==========================================
+  { id: "c-jan-aluguel", mesAno: "2027-01", descricao: "Aluguel Residencial", categoria: "Aluguel", valor: 1450.00, vencimento: "2027-01-02", quemPaga: "DIV", pago: false, status: "PREVISTO", recorrente: true },
+  { id: "c-jan-carro", mesAno: "2027-01", descricao: "Parcela do Carro", categoria: "Carro", valor: 1750.00, vencimento: "2027-01-12", quemPaga: "DIV", pago: false, status: "PREVISTO", recorrente: true },
+  { id: "c-jan-agua", mesAno: "2027-01", descricao: "Água / Saneamento (Corsan)", categoria: "Água", valor: 120.00, vencimento: "2027-01-20", quemPaga: "DIV", pago: false, status: "PREVISTO", recorrente: true },
+  { id: "c-jan-internet", mesAno: "2027-01", descricao: "Internet Residencial (Vero)", categoria: "Internet", valor: 135.00, vencimento: "2027-01-15", quemPaga: "DIV", pago: false, status: "PREVISTO", recorrente: true },
+  { id: "c-jan-luz", mesAno: "2027-01", descricao: "Energia Elétrica (Luz)", categoria: "Luz", valor: 350.00, vencimento: "2027-01-20", quemPaga: "DIV", pago: false, status: "PREVISTO", recorrente: true },
+  { id: "c-jan-tel", mesAno: "2027-01", descricao: "Telefone Celular Vivo", categoria: "Telefone", valor: 64.00, vencimento: "2027-01-10", quemPaga: "VIC", pago: false, status: "PREVISTO", recorrente: true },
 ];
 
 export const INITIAL_POUPANCA: MovimentacaoPoupanca[] = [

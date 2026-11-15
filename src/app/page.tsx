@@ -20,6 +20,11 @@ import {
   Clock,
   Layers,
   Pencil,
+  BarChart3,
+  TrendingUp,
+  PieChart,
+  Car,
+  Users,
 } from "lucide-react";
 import {
   CartaoBanco,
@@ -53,7 +58,7 @@ import {
   parsearLinhasFatura,
 } from "@/lib/pdf-parser";
 
-type AbaAtiva = "inicio" | "poupanca" | "salarios" | "cartoes" | "contas";
+type AbaAtiva = "inicio" | "poupanca" | "salarios" | "cartoes" | "contas" | "analise";
 
 export default function DashboardPage() {
   const [aba, setAba] = useState<AbaAtiva>("inicio");
@@ -334,10 +339,27 @@ export default function DashboardPage() {
     let leDireto = 0;
     let divTotal = 0;
 
+    let c6Vic = 0;
+    let c6Le = 0;
+    let c6Div = 0;
+    let sicrediVic = 0;
+    let sicrediLe = 0;
+    let sicrediDiv = 0;
+
     doMes.forEach((item) => {
-      if (item.quemPaga === "VIC") vicDireto += item.valor;
-      else if (item.quemPaga === "LE") leDireto += item.valor;
-      else divTotal += item.valor;
+      if (item.quemPaga === "VIC") {
+        vicDireto += item.valor;
+        if (item.banco === "C6 Bank") c6Vic += item.valor;
+        if (item.banco === "Sicredi") sicrediVic += item.valor;
+      } else if (item.quemPaga === "LE") {
+        leDireto += item.valor;
+        if (item.banco === "C6 Bank") c6Le += item.valor;
+        if (item.banco === "Sicredi") sicrediLe += item.valor;
+      } else {
+        divTotal += item.valor;
+        if (item.banco === "C6 Bank") c6Div += item.valor;
+        if (item.banco === "Sicredi") sicrediDiv += item.valor;
+      }
     });
 
     const metadeDiv = divTotal / 2;
@@ -346,6 +368,12 @@ export default function DashboardPage() {
       leDireto,
       divTotal,
       metadeDiv,
+      c6Vic,
+      c6Le,
+      c6Div,
+      sicrediVic,
+      sicrediLe,
+      sicrediDiv,
       totalVictorCartoes: vicDireto + metadeDiv,
       totalLeticiaCartoes: leDireto + metadeDiv,
       totalGeralCartoes: vicDireto + leDireto + divTotal,
@@ -668,7 +696,7 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Navegação das 5 Abas */}
+        {/* Navegação das 6 Abas */}
         <nav className="max-w-7xl mx-auto px-4 flex gap-1 overflow-x-auto border-t border-slate-800">
           {[
             { id: "inicio", label: "1. Tela Inicial", icon: Wallet },
@@ -676,6 +704,7 @@ export default function DashboardPage() {
             { id: "salarios", label: "3. Salários (Legislação RS)", icon: BadgeDollarSign },
             { id: "cartoes", label: "4. Cartões (C6 & Sicredi)", icon: CreditCard },
             { id: "contas", label: "5. Contas & Projeção 6 Meses", icon: CalendarRange },
+            { id: "analise", label: "6. Análise Victor & Letícia", icon: BarChart3 },
           ].map((item) => {
             const Icon = item.icon;
             const ativo = aba === item.id;
@@ -1880,6 +1909,604 @@ export default function DashboardPage() {
                     ))
                   )}
                 </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ========================================================= */}
+        {/* ABA 6: ANÁLISE INDIVIDUAL (VICTOR & LETÍCIA) & PROJEÇÃO    */}
+        {/* ========================================================= */}
+        {aba === "analise" && (
+          <div className="space-y-6">
+            {/* Header da Aba 6 */}
+            <div className="bg-slate-900 text-white p-6 rounded-2xl shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-xl font-bold">Análise Mensal Individual & Projeção Futura</h2>
+                  <span className="bg-emerald-500/20 text-emerald-300 text-xs font-semibold px-2.5 py-0.5 rounded-full border border-emerald-500/30">
+                    {formatarMesAnoLabel(mesSelecionado)}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-400 mt-1">
+                  Demonstrativo contábil mês a mês separado para Victor e Letícia: Salário Líquido real vs Contas a Pagar, taxa de comprometimento, saldo individual e projeção dos próximos meses.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <label className="text-xs text-slate-300 font-medium">Mês de Análise:</label>
+                <input
+                  type="month"
+                  value={mesSelecionado}
+                  onChange={(e) => setMesSelecionado(e.target.value)}
+                  className="bg-slate-800 border border-slate-700 text-white text-xs font-bold rounded-xl px-3 py-2 focus:outline-none focus:border-emerald-400"
+                />
+              </div>
+            </div>
+
+            {/* Síntese Geral da Família no Mês Selecionado */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
+                <span className="text-xs text-slate-500 font-semibold block uppercase">Renda Familiar Líquida</span>
+                <p className="text-2xl font-black text-slate-900 mt-1">{formatarMoeda(salarioLiquidoTotalCasal)}</p>
+                <span className="text-[11px] text-slate-400 mt-1 block">
+                  Victor: {formatarMoeda(salarioVictorFinal)} • Letícia: {formatarMoeda(salarioLeticiaFinal)}
+                </span>
+              </div>
+
+              <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
+                <span className="text-xs text-slate-500 font-semibold block uppercase">Total Contas & Cartões</span>
+                <p className="text-2xl font-black text-slate-900 mt-1">{formatarMoeda(resumoMensalCasal.totalGastoCasal)}</p>
+                <span className="text-[11px] text-slate-400 mt-1 block">
+                  Contas Fixas + Faturas C6 & Sicredi
+                </span>
+              </div>
+
+              <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
+                <span className="text-xs text-slate-500 font-semibold block uppercase">Sobra Líquida Conjunta</span>
+                <p
+                  className={`text-2xl font-black mt-1 ${
+                    salarioLiquidoTotalCasal - resumoMensalCasal.totalGastoCasal >= 0
+                      ? "text-emerald-600"
+                      : "text-rose-600"
+                  }`}
+                >
+                  {formatarMoeda(salarioLiquidoTotalCasal - resumoMensalCasal.totalGastoCasal)}
+                </p>
+                <span className="text-[11px] text-slate-400 mt-1 block">
+                  {salarioLiquidoTotalCasal - resumoMensalCasal.totalGastoCasal >= 0
+                    ? "✓ Superávit positivo para poupança"
+                    : "⚠ Gastos acima da renda no mês"}
+                </span>
+              </div>
+
+              <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
+                <span className="text-xs text-slate-500 font-semibold block uppercase">Comprometimento Familiar</span>
+                <p className="text-2xl font-black text-slate-900 mt-1">
+                  {salarioLiquidoTotalCasal > 0
+                    ? `${((resumoMensalCasal.totalGastoCasal / salarioLiquidoTotalCasal) * 100).toFixed(1)}%`
+                    : "0%"}
+                </p>
+                <span className="text-[11px] text-slate-400 mt-1 block">
+                  {((resumoMensalCasal.totalGastoCasal / salarioLiquidoTotalCasal) * 100) <= 70
+                    ? "✓ Faixa saudável (< 70%)"
+                    : "⚠ Alerta de comprometimento"}
+                </span>
+              </div>
+            </div>
+
+            {/* ========================================================= */}
+            {/* DIVISÃO EM 2 LADOS: VICTOR (ESQUERDA) & LETÍCIA (DIREITA)  */}
+            {/* ========================================================= */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+              {/* ======================================================= */}
+              {/* LADO ESQUERDO: VICTOR ROQUE (CBMRS)                      */}
+              {/* ======================================================= */}
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                <div className="bg-blue-600 text-white px-6 py-4 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <ShieldCheck className="w-5 h-5 text-blue-200" />
+                    <div>
+                      <h3 className="font-bold text-base">Victor Roque — Sd CBMRS</h3>
+                      <p className="text-[11px] text-blue-100">Análise Financeira Individual</p>
+                    </div>
+                  </div>
+                  <span
+                    className={`text-[11px] font-bold px-2.5 py-1 rounded-full ${
+                      contrachequeMes.victorConfirmado
+                        ? "bg-white/20 text-white"
+                        : "bg-amber-400/30 text-amber-100"
+                    }`}
+                  >
+                    {contrachequeMes.victorConfirmado ? "✓ Contracheque Oficial" : "⏳ Previsão Folha"}
+                  </span>
+                </div>
+
+                <div className="p-6 space-y-5">
+                  {/* Cards de Resumo Victor */}
+                  <div className="grid grid-cols-3 gap-3 text-center">
+                    <div className="bg-blue-50/70 p-3.5 rounded-xl border border-blue-100">
+                      <span className="text-[11px] font-semibold text-slate-500 block">Salário Líquido</span>
+                      <p className="text-base font-black text-blue-800 mt-0.5">{formatarMoeda(salarioVictorFinal)}</p>
+                      <span className="text-[10px] text-blue-600 font-medium">Líquido em Conta</span>
+                    </div>
+
+                    <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200">
+                      <span className="text-[11px] font-semibold text-slate-500 block">Total a Pagar</span>
+                      <p className="text-base font-black text-slate-800 mt-0.5">{formatarMoeda(resumoMensalCasal.totalGastoVictor)}</p>
+                      <span className="text-[10px] text-slate-500 font-medium">
+                        {salarioVictorFinal > 0
+                          ? `${((resumoMensalCasal.totalGastoVictor / salarioVictorFinal) * 100).toFixed(1)}% renda`
+                          : "0%"}
+                      </span>
+                    </div>
+
+                    <div
+                      className={`p-3.5 rounded-xl border ${
+                        resumoMensalCasal.saldoVictor >= 0
+                          ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+                          : "bg-rose-50 border-rose-200 text-rose-800"
+                      }`}
+                    >
+                      <span className="text-[11px] font-semibold text-slate-500 block">Saldo Livre</span>
+                      <p className="text-base font-black mt-0.5">{formatarMoeda(resumoMensalCasal.saldoVictor)}</p>
+                      <span className="text-[10px] font-bold">
+                        {resumoMensalCasal.saldoVictor >= 0 ? "✓ Superávit" : "⚠ Déficit"}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* 1. Faturas de Cartão do Victor */}
+                  <div className="bg-slate-50 rounded-xl p-4 border border-slate-200 space-y-3">
+                    <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                      <h4 className="text-xs font-bold text-slate-800 flex items-center gap-1.5 uppercase tracking-wider">
+                        <CreditCard className="w-3.5 h-3.5 text-blue-600" />
+                        Faturas de Cartão — Parte do Victor
+                      </h4>
+                      <span className="text-xs font-black text-blue-700">
+                        {formatarMoeda(resumoCartoesMes.totalVictorCartoes)}
+                      </span>
+                    </div>
+
+                    <div className="space-y-2 text-xs">
+                      <div className="flex justify-between items-center bg-white p-2.5 rounded-lg border border-slate-100">
+                        <div>
+                          <p className="font-bold text-slate-800">Fatura C6 Bank</p>
+                          <p className="text-[11px] text-slate-500">
+                            Exclusivo: {formatarMoeda(resumoCartoesMes.c6Vic)} • 50% Dividido: {formatarMoeda(resumoCartoesMes.c6Div / 2)}
+                          </p>
+                        </div>
+                        <span className="font-extrabold text-slate-900">
+                          {formatarMoeda(resumoCartoesMes.c6Vic + resumoCartoesMes.c6Div / 2)}
+                        </span>
+                      </div>
+
+                      <div className="flex justify-between items-center bg-white p-2.5 rounded-lg border border-slate-100">
+                        <div>
+                          <p className="font-bold text-slate-800">Fatura Sicredi</p>
+                          <p className="text-[11px] text-slate-500">
+                            Exclusivo: {formatarMoeda(resumoCartoesMes.sicrediVic)} • 50% Dividido: {formatarMoeda(resumoCartoesMes.sicrediDiv / 2)}
+                          </p>
+                        </div>
+                        <span className="font-extrabold text-slate-900">
+                          {formatarMoeda(resumoCartoesMes.sicrediVic + resumoCartoesMes.sicrediDiv / 2)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 2. Contas Fixas & Boletos da Casa do Victor */}
+                  <div className="bg-slate-50 rounded-xl p-4 border border-slate-200 space-y-3">
+                    <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                      <h4 className="text-xs font-bold text-slate-800 flex items-center gap-1.5 uppercase tracking-wider">
+                        <CalendarRange className="w-3.5 h-3.5 text-blue-600" />
+                        Contas da Casa & Boletos — Parte do Victor
+                      </h4>
+                      <span className="text-xs font-black text-slate-800">
+                        {formatarMoeda(resumoMensalCasal.totalGastoVictor - resumoCartoesMes.totalVictorCartoes)}
+                      </span>
+                    </div>
+
+                    <div className="divide-y divide-slate-200/70">
+                      {resumoMensalCasal.contasDoMes.filter((c) => c.quemPaga === "VIC" || c.quemPaga === "DIV").length === 0 ? (
+                        <p className="py-3 text-xs text-slate-400 text-center">Nenhuma conta atribuída ao Victor neste mês.</p>
+                      ) : (
+                        resumoMensalCasal.contasDoMes
+                          .filter((c) => c.quemPaga === "VIC" || c.quemPaga === "DIV")
+                          .map((conta) => {
+                            const valorVictor = conta.quemPaga === "VIC" ? conta.valor : conta.valor / 2;
+                            return (
+                              <div key={conta.id} className="py-2.5 flex items-center justify-between text-xs">
+                                <div className="flex items-center gap-2.5">
+                                  <input
+                                    type="checkbox"
+                                    checked={conta.pago}
+                                    onChange={() => alternarPagoConta(conta.id)}
+                                    className="w-4 h-4 accent-blue-600 rounded"
+                                  />
+                                  <div>
+                                    <p className={`font-semibold ${conta.pago ? "line-through text-slate-400" : "text-slate-800"}`}>
+                                      {conta.descricao}
+                                    </p>
+                                    <p className="text-[11px] text-slate-500">
+                                      Venc: {conta.vencimento.split("-").reverse().join("/")} •{" "}
+                                      <span className={conta.quemPaga === "DIV" ? "text-amber-700 font-semibold" : "text-blue-700 font-semibold"}>
+                                        {conta.quemPaga === "DIV" ? `Dividido (50% de ${formatarMoeda(conta.valor)})` : "100% Victor"}
+                                      </span>
+                                    </p>
+                                  </div>
+                                </div>
+                                <span className={`font-bold ${conta.pago ? "text-slate-400 line-through" : "text-slate-900"}`}>
+                                  {formatarMoeda(valorVictor)}
+                                </span>
+                              </div>
+                            );
+                          })
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Totalizador Geral Victor */}
+                  <div className="bg-blue-50 p-4 rounded-xl border border-blue-200 flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-bold text-blue-900 uppercase">Total das Obrigações do Victor</p>
+                      <p className="text-[11px] text-blue-700">Cartões + Contas Fixas</p>
+                    </div>
+                    <span className="text-lg font-black text-blue-800">
+                      {formatarMoeda(resumoMensalCasal.totalGastoVictor)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* ======================================================= */}
+              {/* LADO DIREITO: LETÍCIA RIBEIRO (BMRS)                     */}
+              {/* ======================================================= */}
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                <div className="bg-purple-600 text-white px-6 py-4 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <ShieldCheck className="w-5 h-5 text-purple-200" />
+                    <div>
+                      <h3 className="font-bold text-base">Letícia Ribeiro — Sd BMRS</h3>
+                      <p className="text-[11px] text-purple-100">Análise Financeira Individual</p>
+                    </div>
+                  </div>
+                  <span
+                    className={`text-[11px] font-bold px-2.5 py-1 rounded-full ${
+                      contrachequeMes.leticiaConfirmada
+                        ? "bg-white/20 text-white"
+                        : "bg-amber-400/30 text-amber-100"
+                    }`}
+                  >
+                    {contrachequeMes.leticiaConfirmada ? "✓ Contracheque Oficial" : "⏳ Previsão Folha"}
+                  </span>
+                </div>
+
+                <div className="p-6 space-y-5">
+                  {/* Cards de Resumo Letícia */}
+                  <div className="grid grid-cols-3 gap-3 text-center">
+                    <div className="bg-purple-50/70 p-3.5 rounded-xl border border-purple-100">
+                      <span className="text-[11px] font-semibold text-slate-500 block">Salário Líquido</span>
+                      <p className="text-base font-black text-purple-800 mt-0.5">{formatarMoeda(salarioLeticiaFinal)}</p>
+                      <span className="text-[10px] text-purple-600 font-medium">Líquido em Conta</span>
+                    </div>
+
+                    <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200">
+                      <span className="text-[11px] font-semibold text-slate-500 block">Total a Pagar</span>
+                      <p className="text-base font-black text-slate-800 mt-0.5">{formatarMoeda(resumoMensalCasal.totalGastoLeticia)}</p>
+                      <span className="text-[10px] text-slate-500 font-medium">
+                        {salarioLeticiaFinal > 0
+                          ? `${((resumoMensalCasal.totalGastoLeticia / salarioLeticiaFinal) * 100).toFixed(1)}% renda`
+                          : "0%"}
+                      </span>
+                    </div>
+
+                    <div
+                      className={`p-3.5 rounded-xl border ${
+                        resumoMensalCasal.saldoLeticia >= 0
+                          ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+                          : "bg-rose-50 border-rose-200 text-rose-800"
+                      }`}
+                    >
+                      <span className="text-[11px] font-semibold text-slate-500 block">Saldo Livre</span>
+                      <p className="text-base font-black mt-0.5">{formatarMoeda(resumoMensalCasal.saldoLeticia)}</p>
+                      <span className="text-[10px] font-bold">
+                        {resumoMensalCasal.saldoLeticia >= 0 ? "✓ Superávit" : "⚠ Déficit"}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* 1. Faturas de Cartão da Letícia */}
+                  <div className="bg-slate-50 rounded-xl p-4 border border-slate-200 space-y-3">
+                    <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                      <h4 className="text-xs font-bold text-slate-800 flex items-center gap-1.5 uppercase tracking-wider">
+                        <CreditCard className="w-3.5 h-3.5 text-purple-600" />
+                        Faturas de Cartão — Parte da Letícia
+                      </h4>
+                      <span className="text-xs font-black text-purple-700">
+                        {formatarMoeda(resumoCartoesMes.totalLeticiaCartoes)}
+                      </span>
+                    </div>
+
+                    <div className="space-y-2 text-xs">
+                      <div className="flex justify-between items-center bg-white p-2.5 rounded-lg border border-slate-100">
+                        <div>
+                          <p className="font-bold text-slate-800">Fatura C6 Bank</p>
+                          <p className="text-[11px] text-slate-500">
+                            Exclusivo: {formatarMoeda(resumoCartoesMes.c6Le)} • 50% Dividido: {formatarMoeda(resumoCartoesMes.c6Div / 2)}
+                          </p>
+                        </div>
+                        <span className="font-extrabold text-slate-900">
+                          {formatarMoeda(resumoCartoesMes.c6Le + resumoCartoesMes.c6Div / 2)}
+                        </span>
+                      </div>
+
+                      <div className="flex justify-between items-center bg-white p-2.5 rounded-lg border border-slate-100">
+                        <div>
+                          <p className="font-bold text-slate-800">Fatura Sicredi</p>
+                          <p className="text-[11px] text-slate-500">
+                            Exclusivo: {formatarMoeda(resumoCartoesMes.sicrediLe)} • 50% Dividido: {formatarMoeda(resumoCartoesMes.sicrediDiv / 2)}
+                          </p>
+                        </div>
+                        <span className="font-extrabold text-slate-900">
+                          {formatarMoeda(resumoCartoesMes.sicrediLe + resumoCartoesMes.sicrediDiv / 2)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 2. Contas Fixas & Boletos da Casa da Letícia */}
+                  <div className="bg-slate-50 rounded-xl p-4 border border-slate-200 space-y-3">
+                    <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                      <h4 className="text-xs font-bold text-slate-800 flex items-center gap-1.5 uppercase tracking-wider">
+                        <CalendarRange className="w-3.5 h-3.5 text-purple-600" />
+                        Contas da Casa & Boletos — Parte da Letícia
+                      </h4>
+                      <span className="text-xs font-black text-slate-800">
+                        {formatarMoeda(resumoMensalCasal.totalGastoLeticia - resumoCartoesMes.totalLeticiaCartoes)}
+                      </span>
+                    </div>
+
+                    <div className="divide-y divide-slate-200/70">
+                      {resumoMensalCasal.contasDoMes.filter((c) => c.quemPaga === "LE" || c.quemPaga === "DIV").length === 0 ? (
+                        <p className="py-3 text-xs text-slate-400 text-center">Nenhuma conta atribuída à Letícia neste mês.</p>
+                      ) : (
+                        resumoMensalCasal.contasDoMes
+                          .filter((c) => c.quemPaga === "LE" || c.quemPaga === "DIV")
+                          .map((conta) => {
+                            const valorLeticia = conta.quemPaga === "LE" ? conta.valor : conta.valor / 2;
+                            return (
+                              <div key={conta.id} className="py-2.5 flex items-center justify-between text-xs">
+                                <div className="flex items-center gap-2.5">
+                                  <input
+                                    type="checkbox"
+                                    checked={conta.pago}
+                                    onChange={() => alternarPagoConta(conta.id)}
+                                    className="w-4 h-4 accent-purple-600 rounded"
+                                  />
+                                  <div>
+                                    <p className={`font-semibold ${conta.pago ? "line-through text-slate-400" : "text-slate-800"}`}>
+                                      {conta.descricao}
+                                    </p>
+                                    <p className="text-[11px] text-slate-500">
+                                      Venc: {conta.vencimento.split("-").reverse().join("/")} •{" "}
+                                      <span className={conta.quemPaga === "DIV" ? "text-amber-700 font-semibold" : "text-purple-700 font-semibold"}>
+                                        {conta.quemPaga === "DIV" ? `Dividido (50% de ${formatarMoeda(conta.valor)})` : "100% Letícia"}
+                                      </span>
+                                    </p>
+                                  </div>
+                                </div>
+                                <span className={`font-bold ${conta.pago ? "text-slate-400 line-through" : "text-slate-900"}`}>
+                                  {formatarMoeda(valorLeticia)}
+                                </span>
+                              </div>
+                            );
+                          })
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Totalizador Geral Letícia */}
+                  <div className="bg-purple-50 p-4 rounded-xl border border-purple-200 flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-bold text-purple-900 uppercase">Total das Obrigações da Letícia</p>
+                      <p className="text-[11px] text-purple-700">Cartões + Contas Fixas</p>
+                    </div>
+                    <span className="text-lg font-black text-purple-800">
+                      {formatarMoeda(resumoMensalCasal.totalGastoLeticia)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* ========================================================= */}
+            {/* SEÇÃO AO FIM DA PÁGINA: RESUMO DA PROJEÇÃO DOS PRÓXIMOS MESES */}
+            {/* ========================================================= */}
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+              <div className="p-6 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-900 text-white">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <TrendingUp className="w-5 h-5 text-emerald-400" />
+                    <h3 className="font-bold text-base">Resumo da Projeção dos Próximos Meses (DRE Familiar)</h3>
+                  </div>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Visão projetada mês a mês separada para Victor e Letícia, antecipando receitas, contas fixas, parcelas de cartões e saldo livre.
+                  </p>
+                </div>
+                <span className="text-xs bg-white/10 px-3 py-1 rounded-full font-semibold border border-white/10">
+                  Próximos 6 Meses
+                </span>
+              </div>
+
+              {/* Destaques das Regras Futuras */}
+              <div className="bg-slate-50 border-b border-slate-200 p-4 grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+                <div className="flex items-start gap-2.5 bg-white p-3 rounded-xl border border-slate-200">
+                  <span className="text-base">💡</span>
+                  <div>
+                    <strong className="text-slate-800 block">Dezembro/2026: Novas Contas Fixas</strong>
+                    <span className="text-slate-500">
+                      Aluguel R$ 1.450 (dia 02) • Luz R$ 350 • Água R$ 120 • Internet R$ 135
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-2.5 bg-emerald-50 p-3 rounded-xl border border-emerald-200">
+                  <Car className="w-4 h-4 text-emerald-700 shrink-0 mt-0.5" />
+                  <div>
+                    <strong className="text-emerald-900 block">Janeiro/2027: Parcela do Carro</strong>
+                    <span className="text-emerald-700">
+                      Início em 12/01/2027: R$ 1.750,00/mês (Dividido: R$ 875,00 Victor / R$ 875,00 Letícia)
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-2.5 bg-white p-3 rounded-xl border border-slate-200">
+                  <span className="text-base">📉</span>
+                  <div>
+                    <strong className="text-slate-800 block">Redução de Parcelas de Cartão</strong>
+                    <span className="text-slate-500">
+                      Parcelas antigas são quitadas mês a mês, aliviando o orçamento familiar
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Tabela de Projeção Mês a Mês */}
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs text-left">
+                  <thead className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200 uppercase tracking-wider text-[11px]">
+                    <tr>
+                      <th className="px-4 py-3">Mês / Ano</th>
+                      <th className="px-4 py-3 text-blue-900 bg-blue-50/50">Victor: Salário</th>
+                      <th className="px-4 py-3 text-blue-900 bg-blue-50/50">Victor: Contas</th>
+                      <th className="px-4 py-3 text-blue-900 bg-blue-50/50">Victor: Saldo</th>
+                      <th className="px-4 py-3 text-purple-900 bg-purple-50/50">Letícia: Salário</th>
+                      <th className="px-4 py-3 text-purple-900 bg-purple-50/50">Letícia: Contas</th>
+                      <th className="px-4 py-3 text-purple-900 bg-purple-50/50">Letícia: Saldo</th>
+                      <th className="px-4 py-3 text-slate-900 bg-slate-100">Casal: Renda</th>
+                      <th className="px-4 py-3 text-slate-900 bg-slate-100">Casal: Contas</th>
+                      <th className="px-4 py-3 text-emerald-900 bg-emerald-50">Sobra Familiar</th>
+                      <th className="px-4 py-3">Destaques / Eventos</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 font-medium">
+                    {projecao6Meses.map((p) => {
+                      const isAtual = p.mesAno === mesSelecionado;
+                      const salVic = isAtual ? salarioVictorFinal : resVictor.liquidoFolha;
+                      const salLet = isAtual ? salarioLeticiaFinal : resLeticia.liquidoFolha;
+                      const saldoVic = salVic - p.totalGeralVictor;
+                      const saldoLet = salLet - p.totalGeralLeticia;
+                      const rendaCasal = salVic + salLet;
+                      const despesaCasal = p.totalGeral;
+                      const sobraCasal = rendaCasal - despesaCasal;
+
+                      return (
+                        <tr
+                          key={p.mesAno}
+                          className={`hover:bg-slate-50 transition ${
+                            isAtual ? "bg-amber-50/40 font-semibold" : ""
+                          }`}
+                        >
+                          {/* Mês / Ano */}
+                          <td className="px-4 py-3 whitespace-nowrap">
+                            <span className="font-bold text-slate-900">{p.label}</span>
+                            {isAtual && (
+                              <span className="ml-1.5 text-[10px] bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded font-bold">
+                                Atual
+                              </span>
+                            )}
+                          </td>
+
+                          {/* Victor */}
+                          <td className="px-4 py-3 whitespace-nowrap bg-blue-50/30 text-blue-900">
+                            {formatarMoeda(salVic)}
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap bg-blue-50/30 font-semibold text-slate-800">
+                            {formatarMoeda(p.totalGeralVictor)}
+                            <span className="block text-[10px] text-slate-400 font-normal">
+                              Fixas: {formatarMoeda(p.totalContasVictor)} | Cart: {formatarMoeda(p.totalParcelasVictor)}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap bg-blue-50/30">
+                            <span
+                              className={`font-bold px-2 py-0.5 rounded text-[11px] ${
+                                saldoVic >= 0
+                                  ? "bg-emerald-100 text-emerald-800"
+                                  : "bg-rose-100 text-rose-800"
+                              }`}
+                            >
+                              {formatarMoeda(saldoVic)}
+                            </span>
+                          </td>
+
+                          {/* Letícia */}
+                          <td className="px-4 py-3 whitespace-nowrap bg-purple-50/30 text-purple-900">
+                            {formatarMoeda(salLet)}
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap bg-purple-50/30 font-semibold text-slate-800">
+                            {formatarMoeda(p.totalGeralLeticia)}
+                            <span className="block text-[10px] text-slate-400 font-normal">
+                              Fixas: {formatarMoeda(p.totalContasLeticia)} | Cart: {formatarMoeda(p.totalParcelasLeticia)}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap bg-purple-50/30">
+                            <span
+                              className={`font-bold px-2 py-0.5 rounded text-[11px] ${
+                                saldoLet >= 0
+                                  ? "bg-emerald-100 text-emerald-800"
+                                  : "bg-rose-100 text-rose-800"
+                              }`}
+                            >
+                              {formatarMoeda(saldoLet)}
+                            </span>
+                          </td>
+
+                          {/* Casal / Família */}
+                          <td className="px-4 py-3 whitespace-nowrap bg-slate-50 font-bold text-slate-900">
+                            {formatarMoeda(rendaCasal)}
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap bg-slate-50 font-extrabold text-slate-800">
+                            {formatarMoeda(despesaCasal)}
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap bg-emerald-50/50">
+                            <span
+                              className={`font-black text-xs ${
+                                sobraCasal >= 0 ? "text-emerald-700" : "text-rose-600"
+                              }`}
+                            >
+                              {formatarMoeda(sobraCasal)}
+                            </span>
+                          </td>
+
+                          {/* Destaques / Eventos */}
+                          <td className="px-4 py-3 text-[11px] text-slate-600">
+                            {p.mesAno === "2026-11" && (
+                              <span className="text-blue-700 font-semibold">
+                                Faturas fechadas (C6 R$ 2.890,81 + Sicredi R$ 3.609,22)
+                              </span>
+                            )}
+                            {p.mesAno === "2026-12" && (
+                              <span className="text-amber-700 font-semibold">
+                                💡 Novas contas fixas (Aluguel R$ 1.450, Luz R$ 350, Água R$ 120, Internet R$ 135)
+                              </span>
+                            )}
+                            {p.mesAno === "2027-01" && (
+                              <span className="text-emerald-700 font-bold">
+                                🚗 Início Parcela Carro (R$ 1.750,00 em 12/01/2027)
+                              </span>
+                            )}
+                            {p.mesAno > "2027-01" && (
+                              <span className="text-slate-500">
+                                🚗 Parcela Carro R$ 1.750 + amortização progressiva de parcelas
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
             </div>
           </div>

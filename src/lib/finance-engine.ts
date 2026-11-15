@@ -270,6 +270,56 @@ function parseParcela(info?: string): { atual: number; total: number } | null {
   return { atual: parseInt(match[1], 10), total: parseInt(match[2], 10) };
 }
 
+/**
+ * Retorna a lista padrão de contas fixas para um determinado mês,
+ * respeitando os novos valores vigentes a partir de Dezembro/2026
+ * e a entrada da parcela do Carro (R$ 1.750,00) a partir de 12/01/2027
+ */
+export function obterContasFixasPadraoMes(mesAlvo: string): ContaCasa[] {
+  if (mesAlvo < "2026-12") {
+    return [
+      { id: `padrao-aluguel-${mesAlvo}`, mesAno: mesAlvo, descricao: "Aluguel + IPTU", categoria: "Aluguel", valor: 1444.35, vencimento: `${mesAlvo}-05`, quemPaga: "DIV", pago: false, status: "CONFIRMADO", recorrente: true },
+      { id: `padrao-internet-${mesAlvo}`, mesAno: mesAlvo, descricao: "Internet Residencial (Vero)", categoria: "Internet", valor: 135.69, vencimento: `${mesAlvo}-15`, quemPaga: "DIV", pago: false, status: "CONFIRMADO", recorrente: true },
+      { id: `padrao-luz-${mesAlvo}`, mesAno: mesAlvo, descricao: "Energia Elétrica (CEEE Luz)", categoria: "Luz", valor: 301.18, vencimento: `${mesAlvo}-20`, quemPaga: "DIV", pago: false, status: "CONFIRMADO", recorrente: true },
+      { id: `padrao-agua-${mesAlvo}`, mesAno: mesAlvo, descricao: "Água / Saneamento (Corsan)", categoria: "Água", valor: 90.00, vencimento: `${mesAlvo}-20`, quemPaga: "DIV", pago: false, status: "CONFIRMADO", recorrente: true },
+      { id: `padrao-carro-${mesAlvo}`, mesAno: mesAlvo, descricao: "Parcela Financiamento Carro", categoria: "Carro", valor: 1100.00, vencimento: `${mesAlvo}-20`, quemPaga: "DIV", pago: false, status: "CONFIRMADO", recorrente: true },
+      { id: `padrao-tel-${mesAlvo}`, mesAno: mesAlvo, descricao: "Telefone Celular Vivo", categoria: "Telefone", valor: 64.00, vencimento: `${mesAlvo}-10`, quemPaga: "VIC", pago: false, status: "CONFIRMADO", recorrente: true },
+    ];
+  }
+
+  // A partir de Dezembro/2026:
+  // Aluguel R$ 1.450,00 (vencimento dia 02)
+  // Água R$ 120,00 (vencimento dia 20)
+  // Internet Residencial R$ 135,00 (vencimento dia 15)
+  // Luz R$ 350,00 (vencimento dia 20)
+  // Telefone Celular R$ 64,00 (vencimento dia 10 - Victor)
+  const contas: ContaCasa[] = [
+    { id: `padrao-aluguel-${mesAlvo}`, mesAno: mesAlvo, descricao: "Aluguel Residencial", categoria: "Aluguel", valor: 1450.00, vencimento: `${mesAlvo}-02`, quemPaga: "DIV", pago: false, status: "PREVISTO", recorrente: true },
+    { id: `padrao-agua-${mesAlvo}`, mesAno: mesAlvo, descricao: "Água / Saneamento (Corsan)", categoria: "Água", valor: 120.00, vencimento: `${mesAlvo}-20`, quemPaga: "DIV", pago: false, status: "PREVISTO", recorrente: true },
+    { id: `padrao-internet-${mesAlvo}`, mesAno: mesAlvo, descricao: "Internet Residencial (Vero)", categoria: "Internet", valor: 135.00, vencimento: `${mesAlvo}-15`, quemPaga: "DIV", pago: false, status: "PREVISTO", recorrente: true },
+    { id: `padrao-luz-${mesAlvo}`, mesAno: mesAlvo, descricao: "Energia Elétrica (Luz)", categoria: "Luz", valor: 350.00, vencimento: `${mesAlvo}-20`, quemPaga: "DIV", pago: false, status: "PREVISTO", recorrente: true },
+    { id: `padrao-tel-${mesAlvo}`, mesAno: mesAlvo, descricao: "Telefone Celular Vivo", categoria: "Telefone", valor: 64.00, vencimento: `${mesAlvo}-10`, quemPaga: "VIC", pago: false, status: "PREVISTO", recorrente: true },
+  ];
+
+  // A partir de 12/01/2027: Parcela do Carro R$ 1.750,00 (vencimento dia 12)
+  if (mesAlvo >= "2027-01") {
+    contas.splice(1, 0, {
+      id: `padrao-carro-${mesAlvo}`,
+      mesAno: mesAlvo,
+      descricao: "Parcela do Carro",
+      categoria: "Carro",
+      valor: 1750.00,
+      vencimento: `${mesAlvo}-12`,
+      quemPaga: "DIV",
+      pago: false,
+      status: "PREVISTO",
+      recorrente: true,
+    });
+  }
+
+  return contas;
+}
+
 export function calcularProjecao6Meses(
   mesBase: string,
   contas: ContaCasa[],
@@ -277,43 +327,29 @@ export function calcularProjecao6Meses(
 ): ProjecaoMesContas[] {
   const resultado: ProjecaoMesContas[] = [];
 
-  // Contas fixas recorrentes base (ex: mês selecionado)
-  const contasBase = contas.filter((c) => c.mesAno === mesBase && c.categoria !== "Fatura Cartão");
-
   for (let offset = 0; offset < 6; offset++) {
     const mesAlvo = somarMeses(mesBase, offset);
     const label = formatarMesAnoLabel(mesAlvo);
 
     // Contas cadastradas para este mês específico
     const contasEspecificas = contas.filter((c) => c.mesAno === mesAlvo);
-    let contasDoMes: ContaCasa[] = [];
+    const padraoMes = obterContasFixasPadraoMes(mesAlvo);
 
-    if (offset === 0) {
-      contasDoMes = contasEspecificas;
-    } else {
-      // Para meses futuros: projeta as contas base recorrentes
-      const mapeadas = contasBase.map((c) => {
+    let contasDoMes: ContaCasa[] = [];
+    if (contasEspecificas.length > 0) {
+      // Mescla as cadastradas com as padrão não cadastradas
+      const mapeadas = padraoMes.map((p) => {
         const especifica = contasEspecificas.find(
           (e) =>
-            e.descricao.toLowerCase().trim() === c.descricao.toLowerCase().trim() ||
-            (e.categoria === c.categoria && e.categoria !== "Outros")
+            e.descricao.toLowerCase().trim() === p.descricao.toLowerCase().trim() ||
+            (e.categoria === p.categoria && e.categoria !== "Outros")
         );
-        if (especifica) return especifica;
-        return {
-          ...c,
-          id: `proj-${mesAlvo}-${c.id}`,
-          mesAno: mesAlvo,
-          vencimento: `${mesAlvo}-${c.vencimento.slice(8) || "10"}`,
-          status: "PREVISTO" as const,
-          pago: false,
-        };
+        return especifica || p;
       });
-
-      // Inclui contas avulsas ou faturas criadas especificamente para este mês futuro
-      const extrasDoMes = contasEspecificas.filter(
-        (e) => !mapeadas.some((m) => m.id === e.id)
-      );
-      contasDoMes = [...mapeadas, ...extrasDoMes];
+      const extras = contasEspecificas.filter((e) => !mapeadas.some((m) => m.id === e.id));
+      contasDoMes = [...mapeadas, ...extras];
+    } else {
+      contasDoMes = padraoMes;
     }
 
     const totalContasFixas = contasDoMes
