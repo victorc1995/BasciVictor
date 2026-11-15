@@ -19,6 +19,7 @@ import {
   CalendarRange,
   Clock,
   Layers,
+  Pencil,
 } from "lucide-react";
 import {
   CartaoBanco,
@@ -90,9 +91,17 @@ export default function DashboardPage() {
   const [bancoFaturaConf, setBancoFaturaConf] = useState<CartaoBanco>("C6 Bank");
   const [valorFaturaConf, setValorFaturaConf] = useState("");
 
+  // Modal / Edição de Contas Fixas
+  const [contaEditando, setContaEditando] = useState<ContaCasa | null>(null);
+  const [editDescricao, setEditDescricao] = useState("");
+  const [editCategoria, setEditCategoria] = useState<ContaCasa["categoria"]>("Outros");
+  const [editValor, setEditValor] = useState("");
+  const [editVencimento, setEditVencimento] = useState("");
+  const [editQuemPaga, setEditQuemPaga] = useState<Pagador>("DIV");
+
   // Carrega dados salvos localmente
   useEffect(() => {
-    const saved = localStorage.getItem("financas_victor_leticia_v2");
+    const saved = localStorage.getItem("financas_victor_leticia_v3");
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
@@ -110,8 +119,23 @@ export default function DashboardPage() {
         if (parsed.comprasCartao) setComprasCartao(parsed.comprasCartao);
         if (parsed.contracheques) setContracheques(parsed.contracheques);
       } catch (e) {
-        console.error("Erro ao ler dados salvos:", e);
+        console.error("Erro ao ler dados salvos v3:", e);
       }
+    } else {
+      // Primeira inicialização v3: migra dados de poupança/salários da v2 se houver,
+      // mas aplica a lista oficial completa das faturas C6 e Sicredi de Novembro
+      const oldSaved = localStorage.getItem("financas_victor_leticia_v2");
+      if (oldSaved) {
+        try {
+          const old = JSON.parse(oldSaved);
+          if (old.poupanca) setPoupanca(old.poupanca);
+          if (old.salVictor) setSalVictor(old.salVictor);
+          if (old.salLeticia) setSalLeticia(old.salLeticia);
+          if (old.contracheques) setContracheques(old.contracheques);
+        } catch {}
+      }
+      setContasCasa(INITIAL_CONTAS_CASA);
+      setComprasCartao(INITIAL_COMPRAS_CARTAO);
     }
     setCarregado(true);
   }, []);
@@ -120,7 +144,7 @@ export default function DashboardPage() {
   useEffect(() => {
     if (!carregado) return;
     localStorage.setItem(
-      "financas_victor_leticia_v2",
+      "financas_victor_leticia_v3",
       JSON.stringify({ contasCasa, poupanca, salVictor, salLeticia, comprasCartao, contracheques })
     );
   }, [contasCasa, poupanca, salVictor, salLeticia, comprasCartao, contracheques, carregado]);
@@ -365,6 +389,59 @@ export default function DashboardPage() {
     if (mesDaConta !== mesSelecionado) {
       setMesSelecionado(mesDaConta);
     }
+  };
+
+  const iniciarEdicaoConta = (conta: ContaCasa) => {
+    setContaEditando(conta);
+    setEditDescricao(conta.descricao);
+    setEditCategoria(conta.categoria);
+    setEditValor(conta.valor.toString());
+    setEditVencimento(conta.vencimento);
+    setEditQuemPaga(conta.quemPaga);
+  };
+
+  const salvarEdicaoConta = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!contaEditando) return;
+    const val = parseFloat(editValor.replace(",", "."));
+    if (isNaN(val) || val <= 0 || !editDescricao.trim()) return;
+
+    const mesDaConta = editVencimento ? editVencimento.slice(0, 7) : contaEditando.mesAno;
+
+    setContasCasa((prev) =>
+      prev.map((c) =>
+        c.id === contaEditando.id
+          ? {
+              ...c,
+              descricao: editDescricao.trim(),
+              categoria: editCategoria,
+              valor: val,
+              vencimento: editVencimento,
+              quemPaga: editQuemPaga,
+              mesAno: mesDaConta,
+            }
+          : c
+      )
+    );
+    setContaEditando(null);
+  };
+
+  const deletarConta = (id: string) => {
+    setContasCasa((prev) => prev.filter((c) => c.id !== id));
+    if (contaEditando?.id === id) {
+      setContaEditando(null);
+    }
+  };
+
+  const restaurarFaturasOriginaisNovembro = () => {
+    setComprasCartao((prev) => [
+      ...prev.filter((c) => c.mesFatura !== "2026-11"),
+      ...INITIAL_COMPRAS_CARTAO,
+    ]);
+    setContasCasa((prev) => [
+      ...prev.filter((c) => c.mesAno !== "2026-11"),
+      ...INITIAL_CONTAS_CASA,
+    ]);
   };
 
   const handleUploadQualquerPDF = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -669,11 +746,19 @@ export default function DashboardPage() {
                           </p>
                         </div>
                       </div>
-                      <div className="flex items-center gap-4">
+                      <div className="flex items-center gap-3">
                         <span className="font-bold text-slate-800">{formatarMoeda(conta.valor)}</span>
                         <button
-                          onClick={() => setContasCasa((prev) => prev.filter((c) => c.id !== conta.id))}
-                          className="text-slate-400 hover:text-rose-600"
+                          onClick={() => iniciarEdicaoConta(conta)}
+                          className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition"
+                          title="Alterar valor ou detalhes desta conta neste mês"
+                        >
+                          <Pencil className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => deletarConta(conta.id)}
+                          className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
+                          title="Excluir conta deste mês"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -951,17 +1036,27 @@ export default function DashboardPage() {
                 ))}
               </div>
 
-              <button
-                onClick={() => {
-                  setTipoInclusao("fatura_pdf");
-                  setBancoPDF(bancoFiltro);
-                  setModalAberto(true);
-                }}
-                className="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold px-4 py-2.5 rounded-xl"
-              >
-                <Upload className="w-4 h-4" />
-                Importar PDF {bancoFiltro}
-              </button>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  onClick={restaurarFaturasOriginaisNovembro}
+                  className="inline-flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold px-3.5 py-2.5 rounded-xl border border-slate-300 transition"
+                  title="Recarregar os 81 lançamentos oficiais dos PDFs anexos de C6 e Sicredi"
+                >
+                  <ArrowRightLeft className="w-3.5 h-3.5 text-slate-500" />
+                  Recarregar Faturas Oficiais Nov/26
+                </button>
+                <button
+                  onClick={() => {
+                    setTipoInclusao("fatura_pdf");
+                    setBancoPDF(bancoFiltro);
+                    setModalAberto(true);
+                  }}
+                  className="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold px-4 py-2.5 rounded-xl shadow-sm"
+                >
+                  <Upload className="w-4 h-4" />
+                  Importar PDF {bancoFiltro}
+                </button>
+              </div>
             </div>
 
             {/* Cards de Divisão Automática (VIC / LE / DIV 50-50) */}
@@ -1237,12 +1332,28 @@ export default function DashboardPage() {
               {/* Coluna 1: Contas Fixas do Mês */}
               <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
                 <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
-                  <h4 className="font-bold text-slate-800 text-sm">
-                    Contas Fixas da Casa ({formatarMesAnoLabel(mesVisualizadoContas)})
-                  </h4>
-                  <span className="text-xs font-bold text-slate-600">
-                    Total: {formatarMoeda(dadosMesVisualizado.totalContasFixas)}
-                  </span>
+                  <div>
+                    <h4 className="font-bold text-slate-800 text-sm">
+                      Contas Fixas da Casa ({formatarMesAnoLabel(mesVisualizadoContas)})
+                    </h4>
+                    <span className="text-xs font-bold text-slate-600">
+                      Total: {formatarMoeda(dadosMesVisualizado.totalContasFixas)}
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setNovaCategoria("Outros");
+                      setNovaDescricao("");
+                      setNovoValor("");
+                      setNovoVencimento(`${mesVisualizadoContas}-10`);
+                      setTipoInclusao("conta");
+                      setModalAberto(true);
+                    }}
+                    className="text-xs bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 px-3 py-1.5 rounded-lg font-bold transition flex items-center gap-1.5"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    Nova Conta
+                  </button>
                 </div>
                 <div className="divide-y divide-slate-100">
                   {dadosMesVisualizado.contas.length === 0 ? (
@@ -1251,7 +1362,7 @@ export default function DashboardPage() {
                     </div>
                   ) : (
                     dadosMesVisualizado.contas.map((c) => (
-                      <div key={c.id} className="px-6 py-3.5 flex items-center justify-between">
+                      <div key={c.id} className="px-6 py-3.5 flex items-center justify-between hover:bg-slate-50 transition">
                         <div>
                           <p className="text-sm font-semibold text-slate-800">{c.descricao}</p>
                           <p className="text-xs text-slate-500">
@@ -1259,8 +1370,8 @@ export default function DashboardPage() {
                             {c.quemPaga === "DIV" ? "50/50" : c.quemPaga === "VIC" ? "Victor" : "Letícia"}
                           </p>
                         </div>
-                        <div className="flex items-center gap-3">
-                          <span className="font-bold text-slate-900">{formatarMoeda(c.valor)}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-slate-900 mr-1">{formatarMoeda(c.valor)}</span>
                           <button
                             onClick={() => alternarPagoConta(c.id)}
                             className={`text-xs px-2.5 py-1 rounded-lg font-bold border transition ${
@@ -1270,6 +1381,20 @@ export default function DashboardPage() {
                             }`}
                           >
                             {c.pago ? "Pago" : "Pendente"}
+                          </button>
+                          <button
+                            onClick={() => iniciarEdicaoConta(c)}
+                            className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition"
+                            title="Alterar valor ou detalhes desta conta neste mês"
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => deletarConta(c.id)}
+                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
+                            title="Excluir esta conta deste mês"
+                          >
+                            <Trash2 className="w-4 h-4" />
                           </button>
                         </div>
                       </div>
@@ -1459,6 +1584,123 @@ export default function DashboardPage() {
                 </label>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* MODAL: EDITAR CONTA FIXA / LANÇADA                        */}
+      {/* ========================================================= */}
+      {contaEditando && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div>
+                <h3 className="font-bold text-lg text-slate-800">Alterar Conta Fixa</h3>
+                <p className="text-xs text-slate-500">Altere o valor ou os detalhes para o mês selecionado</p>
+              </div>
+              <button
+                onClick={() => setContaEditando(null)}
+                className="text-slate-400 hover:text-slate-700 font-bold p-1"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={salvarEdicaoConta} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Descrição</label>
+                <input
+                  type="text"
+                  required
+                  value={editDescricao}
+                  onChange={(e) => setEditDescricao(e.target.value)}
+                  className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Categoria</label>
+                <select
+                  value={editCategoria}
+                  onChange={(e) => setEditCategoria(e.target.value as ContaCasa["categoria"])}
+                  className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                >
+                  <option value="Luz">Luz (Energia Elétrica)</option>
+                  <option value="Água">Água / Saneamento</option>
+                  <option value="Internet">Internet Residencial</option>
+                  <option value="Telefone">Telefone / Celular</option>
+                  <option value="Aluguel">Aluguel / Condomínio / IPTU</option>
+                  <option value="Carro">Carro / Seguro / IPVA / Financiamento</option>
+                  <option value="Fatura Cartão">Fatura de Cartão</option>
+                  <option value="Outros">Outros Boletos</option>
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1">Valor (R$)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    required
+                    value={editValor}
+                    onChange={(e) => setEditValor(e.target.value)}
+                    className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm font-bold text-slate-900 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1">Data de Vencimento</label>
+                  <input
+                    type="date"
+                    required
+                    value={editVencimento}
+                    onChange={(e) => setEditVencimento(e.target.value)}
+                    className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Quem Paga?</label>
+                <select
+                  value={editQuemPaga}
+                  onChange={(e) => setEditQuemPaga(e.target.value as Pagador)}
+                  className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                >
+                  <option value="DIV">Dividido (50% Victor / 50% Letícia)</option>
+                  <option value="VIC">100% Victor</option>
+                  <option value="LE">100% Letícia</option>
+                </select>
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="submit"
+                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 rounded-xl shadow-sm transition text-sm"
+                >
+                  Salvar Alterações
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setContaEditando(null)}
+                  className="px-4 py-2.5 border border-slate-200 text-slate-600 hover:bg-slate-50 font-semibold rounded-xl text-sm"
+                >
+                  Cancelar
+                </button>
+              </div>
+
+              <div className="pt-2 border-t border-slate-100 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => deletarConta(contaEditando.id)}
+                  className="text-xs text-rose-600 hover:text-rose-800 font-semibold flex items-center gap-1.5 p-1"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  Excluir esta conta deste mês
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
