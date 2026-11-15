@@ -201,10 +201,14 @@ export interface ContrachequeConfirmadoMes {
   victorValorReal: number;
   victorExtras?: RendimentoExtraItem[];
   victorGanhosExtras?: number;
+  victorSalarioLiquidoFinal?: number;
+  victorDiferencaCC?: number;
   leticiaConfirmada: boolean;
   leticiaValorReal: number;
   leticiaExtras?: RendimentoExtraItem[];
   leticiaGanhosExtras?: number;
+  leticiaSalarioLiquidoFinal?: number;
+  leticiaDiferencaCC?: number;
 }
 
 export interface ProjecaoMesContas {
@@ -365,23 +369,56 @@ export function calcularProjecao6Meses(
   const resultado: ProjecaoMesContas[] = [];
   const setExcluidos = new Set(contasExcluidas);
 
+  // Helper para verificar se a conta foi explicitamente excluída APENAS para este mês alvo
+  const estaExcluidaNoMes = (mes: string, id: string, desc?: string): boolean => {
+    if (setExcluidos.has(`${mes}:${id}`)) return true;
+    if (desc && setExcluidos.has(`${mes}:${desc.toLowerCase().trim()}`)) return true;
+    // Compatibilidade legado: se foi excluída com ID puro, aplica apenas ao mês base inicial para não vazar aos meses seguintes
+    if (mes === mesBase && setExcluidos.has(id)) return true;
+    return false;
+  };
+
   for (let offset = 0; offset < 6; offset++) {
     const mesAlvo = somarMeses(mesBase, offset);
     const label = formatarMesAnoLabel(mesAlvo);
 
     // Contas cadastradas para este mês específico
     const contasEspecificas = contas.filter(
-      (c) => c.mesAno === mesAlvo && !setExcluidos.has(c.id)
+      (c) => c.mesAno === mesAlvo && !estaExcluidaNoMes(mesAlvo, c.id, c.descricao)
     );
 
+    const padraoMes = obterContasFixasPadraoMes(mesAlvo).filter(
+      (p) => !estaExcluidaNoMes(mesAlvo, p.id, p.descricao)
+    );
+
+    // Mescla o padrão com contas específicas:
+    // Se a conta padrão já tiver sido customizada/paga em contasEspecificas, usa a versão do usuário;
+    // caso contrário, mantém a conta padrão.
     let contasDoMes: ContaCasa[] = [];
-    if (contasEspecificas.length > 0) {
-      contasDoMes = [...contasEspecificas];
-    } else {
-      const padraoMes = obterContasFixasPadraoMes(mesAlvo).filter(
-        (p) => !setExcluidos.has(p.id) && !setExcluidos.has(`${mesAlvo}-${p.descricao}`)
+    for (const p of padraoMes) {
+      const match = contasEspecificas.find(
+        (c) =>
+          c.id === p.id ||
+          c.descricao.toLowerCase().trim() === p.descricao.toLowerCase().trim() ||
+          (c.categoria === p.categoria && ["Luz", "Água", "Internet", "Aluguel", "IPTU", "Carro"].includes(p.categoria))
       );
-      contasDoMes = padraoMes;
+      if (match) {
+        contasDoMes.push(match);
+      } else {
+        contasDoMes.push(p);
+      }
+    }
+
+    // Adiciona contas específicas extras cadastradas pelo usuário que não pertencem ao rol padrão
+    for (const ce of contasEspecificas) {
+      const jaIncluida = contasDoMes.some(
+        (c) =>
+          c.id === ce.id ||
+          c.descricao.toLowerCase().trim() === ce.descricao.toLowerCase().trim()
+      );
+      if (!jaIncluida) {
+        contasDoMes.push(ce);
+      }
     }
 
     // Projeta boletos parcelados (ex: Acordo Nubank) para os meses futuros
@@ -395,7 +432,7 @@ export function calcularProjecao6Meses(
           const descBase = cb.descricao.replace(/\s*\(\d+\/\d+\)/, "").trim();
           const jaExiste = contasDoMes.some((c) => c.descricao.toLowerCase().includes(descBase.toLowerCase()));
           const projId = `proj-parc-${cb.id}-${mesAlvo}`;
-          if (!jaExiste && !setExcluidos.has(projId) && !setExcluidos.has(cb.id)) {
+          if (!jaExiste && !estaExcluidaNoMes(mesAlvo, projId, descBase) && !estaExcluidaNoMes(mesAlvo, cb.id, descBase)) {
             contasDoMes.push({
               id: projId,
               mesAno: mesAlvo,
@@ -415,8 +452,8 @@ export function calcularProjecao6Meses(
       }
     }
 
-    // Garante que nenhuma conta excluída permaneça em contasDoMes
-    contasDoMes = contasDoMes.filter((c) => !setExcluidos.has(c.id));
+    // Garante que nenhuma conta excluída especificamente para este mês permaneça em contasDoMes
+    contasDoMes = contasDoMes.filter((c) => !estaExcluidaNoMes(mesAlvo, c.id, c.descricao));
 
     const totalContasFixas = contasDoMes
       .filter((c) => c.categoria !== "Fatura Cartão")

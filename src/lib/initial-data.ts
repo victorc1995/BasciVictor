@@ -27,11 +27,31 @@ export const INITIAL_SALARIO_LETICIA: ParametrosSalario = {
 };
 
 export const INITIAL_CONTRACHEQUES: Record<string, ContrachequeConfirmadoMes> = {
+  "2026-10": {
+    victorConfirmado: true,
+    victorValorReal: 4713.87,
+    victorSalarioLiquidoFinal: 5557.79, // Com Vale-Refeição R$ 843,92
+    leticiaConfirmada: true,
+    leticiaValorReal: 4810.73,
+    leticiaSalarioLiquidoFinal: 5654.65, // Com Vale-Refeição R$ 843,92
+  },
   "2026-11": {
+    victorConfirmado: true,
+    victorValorReal: 4573.57, // Líquido a Receber Folha Victor (Contracheque oficial)
+    victorSalarioLiquidoFinal: 5417.49, // Líquido Total Oficial (Folha + Vale-Refeição)
+    leticiaConfirmada: true,
+    leticiaValorReal: 4657.44, // Líquido a Receber Folha Letícia (Contracheque oficial)
+    leticiaSalarioLiquidoFinal: 5501.36, // Líquido Total Oficial (Folha + Vale-Refeição)
+  },
+  "2026-12": {
     victorConfirmado: false,
-    victorValorReal: 4713.87, // Líquido a Receber Folha Victor
+    victorValorReal: 3316.40,
+    victorExtras: [
+      { id: "ext-dez-mae", descricao: "Empréstimo mãe", valor: 300.00 },
+    ],
+    victorGanhosExtras: 300.00,
     leticiaConfirmada: false,
-    leticiaValorReal: 4810.73, // Líquido a Receber Folha Letícia
+    leticiaValorReal: 4657.44,
   },
 };
 

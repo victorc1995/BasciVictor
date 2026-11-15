@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-11-15T13:22:51.424Z",
+  "updatedAt": "2026-11-15T13:57:25.503Z",
   "data": {
     "contasCasa": [
       {
@@ -70,7 +70,7 @@
         "mesAno": "2026-11",
         "descricao": "Parcela Financiamento Carro",
         "categoria": "Carro",
-        "valor": 1100,
+        "valor": 1,
         "vencimento": "2026-11-20",
         "quemPaga": "DIV",
         "pago": false,
@@ -719,10 +719,10 @@
     "salVictor": {
       "subsídioBase": 6429.95,
       "tipoSubstituicao": "1_SGT",
-      "diasSubstituicao": 30,
+      "diasSubstituicao": 0,
       "horasExtrasQtd": 0,
       "diasFerias": 0,
-      "diariasQtd": 0,
+      "diariasQtd": 9,
       "descontoBanrisul": 1507.35,
       "outrosDescontosFixos": 123.12,
       "incluirValeRefeicao": false,
@@ -1587,11 +1587,35 @@
       }
     ],
     "contracheques": {
-      "2026-11": {
-        "victorConfirmado": false,
+      "2026-10": {
+        "victorConfirmado": true,
         "victorValorReal": 4713.87,
+        "victorSalarioLiquidoFinal": 5557.79,
+        "leticiaConfirmada": true,
+        "leticiaValorReal": 4810.73,
+        "leticiaSalarioLiquidoFinal": 5654.65
+      },
+      "2026-11": {
+        "victorConfirmado": true,
+        "victorValorReal": 4573.57,
+        "victorSalarioLiquidoFinal": 5417.49,
+        "leticiaConfirmada": true,
+        "leticiaValorReal": 4657.44,
+        "leticiaSalarioLiquidoFinal": 5501.36
+      },
+      "2026-12": {
+        "victorConfirmado": false,
+        "victorValorReal": 3316.4,
         "leticiaConfirmada": false,
-        "leticiaValorReal": 4810.73
+        "leticiaValorReal": 4657.44,
+        "victorExtras": [
+          {
+            "id": "ext-dez-mae",
+            "descricao": "Empréstimo mãe",
+            "valor": 300
+          }
+        ],
+        "victorGanhosExtras": 300
       }
     },
     "faturasPagas": {

@@ -380,77 +380,103 @@ export default function DashboardPage() {
     0;
 
   const salarioVictorFinal =
-    (contrachequeMes.victorConfirmado
-      ? contrachequeMes.victorValorReal +
-        (salVictor.incluirValeRefeicao ? resVictor.valeRefeicaoIndenizatorio : 0) +
-        resVictor.valorDiarias
-      : resVictor.totalDisponivelMes) + victorGanhosExtras;
+    contrachequeMes.victorConfirmado && contrachequeMes.victorSalarioLiquidoFinal !== undefined
+      ? contrachequeMes.victorSalarioLiquidoFinal
+      : (contrachequeMes.victorConfirmado
+          ? contrachequeMes.victorValorReal +
+            (salVictor.incluirValeRefeicao ? resVictor.valeRefeicaoIndenizatorio : 0) +
+            resVictor.valorDiarias
+          : resVictor.totalDisponivelMes) + victorGanhosExtras;
 
   const salarioLeticiaFinal =
-    (contrachequeMes.leticiaConfirmada
-      ? contrachequeMes.leticiaValorReal +
-        (salLeticia.incluirValeRefeicao ? resLeticia.valeRefeicaoIndenizatorio : 0) +
-        resLeticia.valorDiarias
-      : resLeticia.totalDisponivelMes) + leticiaGanhosExtras;
+    contrachequeMes.leticiaConfirmada && contrachequeMes.leticiaSalarioLiquidoFinal !== undefined
+      ? contrachequeMes.leticiaSalarioLiquidoFinal
+      : (contrachequeMes.leticiaConfirmada
+          ? contrachequeMes.leticiaValorReal +
+            (salLeticia.incluirValeRefeicao ? resLeticia.valeRefeicaoIndenizatorio : 0) +
+            resLeticia.valorDiarias
+          : resLeticia.totalDisponivelMes) + leticiaGanhosExtras;
 
   const salarioLiquidoTotalCasal = salarioVictorFinal + salarioLeticiaFinal;
   const salarioPrevistoTotalCasal = resVictor.totalDisponivelMes + resLeticia.totalDisponivelMes + victorGanhosExtras + leticiaGanhosExtras;
 
-  // Handlers para confirmação de contracheques
-  const confirmarContrachequeVictor = (valor: number) => {
-    setContracheques((prev) => ({
-      ...prev,
-      [mesSelecionado]: {
-        ...(prev[mesSelecionado] || {
-          leticiaConfirmada: false,
-          leticiaValorReal: resLeticia.liquidoFolha,
-        }),
-        victorConfirmado: true,
-        victorValorReal: valor,
-      },
-    }));
-  };
-
-  const reverterContrachequeVictor = () => {
-    setContracheques((prev) => ({
-      ...prev,
-      [mesSelecionado]: {
-        ...(prev[mesSelecionado] || {
-          leticiaConfirmada: false,
-          leticiaValorReal: resLeticia.liquidoFolha,
-        }),
-        victorConfirmado: false,
-        victorValorReal: resVictor.liquidoFolha,
-      },
-    }));
-  };
-
-  const confirmarContrachequeLeticia = (valor: number) => {
-    setContracheques((prev) => ({
-      ...prev,
-      [mesSelecionado]: {
-        ...(prev[mesSelecionado] || {
-          victorConfirmado: false,
-          victorValorReal: resVictor.liquidoFolha,
-        }),
-        leticiaConfirmada: true,
-        leticiaValorReal: valor,
-      },
-    }));
-  };
-
-  const reverterContrachequeLeticia = () => {
-    setContracheques((prev) => ({
-      ...prev,
-      [mesSelecionado]: {
-        ...(prev[mesSelecionado] || {
-          victorConfirmado: false,
-          victorValorReal: resVictor.liquidoFolha,
-        }),
+  // Handlers para confirmação de salário líquido mensal
+  const confirmarSalarioVictor = (
+    valorFolha: number,
+    valorFinalLiquido: number,
+    diferencaCC?: number
+  ) => {
+    setContracheques((prev) => {
+      const atual = prev[mesSelecionado] || {
         leticiaConfirmada: false,
         leticiaValorReal: resLeticia.liquidoFolha,
-      },
-    }));
+      };
+      return {
+        ...prev,
+        [mesSelecionado]: {
+          ...atual,
+          victorConfirmado: true,
+          victorValorReal: valorFolha,
+          victorSalarioLiquidoFinal: valorFinalLiquido,
+          victorDiferencaCC: diferencaCC,
+        },
+      };
+    });
+  };
+
+  const reverterSalarioVictor = () => {
+    setContracheques((prev) => {
+      const atual = prev[mesSelecionado];
+      if (!atual) return prev;
+      return {
+        ...prev,
+        [mesSelecionado]: {
+          ...atual,
+          victorConfirmado: false,
+          victorSalarioLiquidoFinal: undefined,
+          victorDiferencaCC: undefined,
+        },
+      };
+    });
+  };
+
+  const confirmarSalarioLeticia = (
+    valorFolha: number,
+    valorFinalLiquido: number,
+    diferencaCC?: number
+  ) => {
+    setContracheques((prev) => {
+      const atual = prev[mesSelecionado] || {
+        victorConfirmado: false,
+        victorValorReal: resVictor.liquidoFolha,
+      };
+      return {
+        ...prev,
+        [mesSelecionado]: {
+          ...atual,
+          leticiaConfirmada: true,
+          leticiaValorReal: valorFolha,
+          leticiaSalarioLiquidoFinal: valorFinalLiquido,
+          leticiaDiferencaCC: diferencaCC,
+        },
+      };
+    });
+  };
+
+  const reverterSalarioLeticia = () => {
+    setContracheques((prev) => {
+      const atual = prev[mesSelecionado];
+      if (!atual) return prev;
+      return {
+        ...prev,
+        [mesSelecionado]: {
+          ...atual,
+          leticiaConfirmada: false,
+          leticiaSalarioLiquidoFinal: undefined,
+          leticiaDiferencaCC: undefined,
+        },
+      };
+    });
   };
 
   // Handlers para rendimentos extras fora do contracheque
@@ -662,6 +688,12 @@ export default function DashboardPage() {
     );
   }, [projecao6Meses, mesVisualizadoContas]);
 
+  // Dados do mês selecionado ativo (Garante sincronização 100% idêntica entre Tela 1 e Tela 5)
+  const dadosMesSelecionado = useMemo(() => {
+    const found = projecao6Meses.find((p) => p.mesAno === mesSelecionado);
+    return found || dadosMesVisualizado;
+  }, [projecao6Meses, mesSelecionado, dadosMesVisualizado]);
+
   // Cálculos de Cartões no Mês Selecionado (Geral Casal)
   const resumoCartoesMes = useMemo(() => {
     const doMes = comprasCartao.filter((c) => c.mesFatura === mesSelecionado);
@@ -754,8 +786,8 @@ export default function DashboardPage() {
   // Cálculos de Contas da Casa + Cartões (Gasto Total de Cada Um no Mês)
   // FILTRO ESTRITO: categoria !== "Fatura Cartão" para NÃO DOBRAR o valor das faturas!
   const resumoMensalCasal = useMemo(() => {
-    const contasDoMes = contasCasa.filter(
-      (c) => c.mesAno === mesSelecionado && c.categoria !== "Fatura Cartão"
+    const contasDoMes = (dadosMesSelecionado?.contas || []).filter(
+      (c) => c.categoria !== "Fatura Cartão"
     );
     let casaVic = 0;
     let casaLe = 0;
@@ -779,7 +811,7 @@ export default function DashboardPage() {
       saldoVictor: salarioVictorFinal - totalGastoVictor,
       saldoLeticia: salarioLeticiaFinal - totalGastoLeticia,
     };
-  }, [contasCasa, mesSelecionado, resumoCartoesMes, salarioVictorFinal, salarioLeticiaFinal]);
+  }, [dadosMesSelecionado, resumoCartoesMes, salarioVictorFinal, salarioLeticiaFinal]);
 
   // Alterna status pago/pendente de faturas de cartão na Tela Inicial
   const alternarPagoFatura = (chave: string) => {
@@ -1116,12 +1148,27 @@ export default function DashboardPage() {
     setContaEditando(null);
   };
 
-  const deletarConta = (id: string) => {
-    setContasCasa((prev) => prev.filter((c) => c.id !== id));
+  const deletarConta = (id: string, mesOpcional?: string) => {
+    const mesAlvo = mesOpcional || (aba === "contas" ? mesVisualizadoContas : mesSelecionado);
+
+    // Procura a conta para obter a descrição
+    const item =
+      contasCasa.find((c) => c.id === id && (c.mesAno === mesAlvo || !c.mesAno)) ||
+      dadosMesVisualizado.contas.find((c) => c.id === id) ||
+      dadosMesSelecionado.contas.find((c) => c.id === id);
+
+    setContasCasa((prev) => prev.filter((c) => !(c.id === id && (c.mesAno === mesAlvo || !c.mesAno))));
+
+    const chaveId = `${mesAlvo}:${id}`;
+    const chaveDesc = item?.descricao ? `${mesAlvo}:${item.descricao.toLowerCase().trim()}` : null;
+
     setContasExcluidas((prev) => {
-      if (prev.includes(id)) return prev;
-      return [...prev, id];
+      const novas = [...prev];
+      if (!novas.includes(chaveId)) novas.push(chaveId);
+      if (chaveDesc && !novas.includes(chaveDesc)) novas.push(chaveDesc);
+      return novas;
     });
+
     if (contaEditando?.id === id) {
       setContaEditando(null);
     }
@@ -1255,10 +1302,36 @@ export default function DashboardPage() {
     setCompraCartaoPoupParcelas("1");
   };
 
-  const alternarPagoConta = (id: string) => {
-    setContasCasa((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, pago: !c.pago } : c))
-    );
+  const alternarPagoConta = (id: string, mesOpcional?: string) => {
+    const mesAlvo = mesOpcional || (aba === "contas" ? mesVisualizadoContas : mesSelecionado);
+    setContasCasa((prev) => {
+      const index = prev.findIndex((c) => c.id === id && (c.mesAno === mesAlvo || !c.mesAno));
+      if (index >= 0) {
+        const item = prev[index];
+        const novoPago = !item.pago;
+        const copia = [...prev];
+        copia[index] = {
+          ...item,
+          pago: novoPago,
+          status: novoPago ? "CONFIRMADO" : "PREVISTO",
+        };
+        return copia;
+      }
+      // Se não existia ainda em contasCasa (ex: conta gerada padrão do mês), localiza e adiciona em contasCasa com pago: true
+      const itemOrig =
+        dadosMesVisualizado.contas.find((c) => c.id === id) ||
+        dadosMesSelecionado.contas.find((c) => c.id === id);
+      if (itemOrig) {
+        const novoItem: ContaCasa = {
+          ...itemOrig,
+          mesAno: mesAlvo,
+          pago: true,
+          status: "CONFIRMADO",
+        };
+        return [...prev, novoItem];
+      }
+      return prev;
+    });
   };
 
   const alterarPagadorCompra = (id: string, novoPagador: Pagador) => {
@@ -2161,10 +2234,13 @@ export default function DashboardPage() {
                 onChange={setSalVictor}
                 resultado={resVictor}
                 mesAnoLabel={formatarMesAnoLabel(mesSelecionado)}
+                mesAno={mesSelecionado}
                 contrachequeConfirmado={contrachequeMes.victorConfirmado}
                 valorRealContracheque={contrachequeMes.victorValorReal}
-                onConfirmarContracheque={confirmarContrachequeVictor}
-                onReverterContracheque={reverterContrachequeVictor}
+                salarioLiquidoFinalConfirmado={contrachequeMes.victorSalarioLiquidoFinal}
+                diferencaCCConfirmada={contrachequeMes.victorDiferencaCC}
+                onConfirmarSalario={confirmarSalarioVictor}
+                onReverterSalario={reverterSalarioVictor}
                 rendimentosExtras={contrachequeMes.victorExtras || []}
                 onAdicionarExtra={adicionarExtraVictor}
                 onRemoverExtra={removerExtraVictor}
@@ -2178,10 +2254,13 @@ export default function DashboardPage() {
                 onChange={setSalLeticia}
                 resultado={resLeticia}
                 mesAnoLabel={formatarMesAnoLabel(mesSelecionado)}
+                mesAno={mesSelecionado}
                 contrachequeConfirmado={contrachequeMes.leticiaConfirmada}
                 valorRealContracheque={contrachequeMes.leticiaValorReal}
-                onConfirmarContracheque={confirmarContrachequeLeticia}
-                onReverterContracheque={reverterContrachequeLeticia}
+                salarioLiquidoFinalConfirmado={contrachequeMes.leticiaSalarioLiquidoFinal}
+                diferencaCCConfirmada={contrachequeMes.leticiaDiferencaCC}
+                onConfirmarSalario={confirmarSalarioLeticia}
+                onReverterSalario={reverterSalarioLeticia}
                 rendimentosExtras={contrachequeMes.leticiaExtras || []}
                 onAdicionarExtra={adicionarExtraLeticia}
                 onRemoverExtra={removerExtraLeticia}
@@ -2624,7 +2703,7 @@ export default function DashboardPage() {
                     <button
                       key={proj.mesAno}
                       type="button"
-                      onClick={() => setMesVisualizadoContas(proj.mesAno)}
+                      onClick={() => handleSelecionarMes(proj.mesAno)}
                       className={`p-4 rounded-2xl border text-left transition-all ${
                         isMesAtivo
                           ? "bg-slate-900 text-white border-slate-900 shadow-md ring-2 ring-emerald-500"
@@ -3269,6 +3348,185 @@ export default function DashboardPage() {
                     </span>
                   </div>
                 </div>
+              </div>
+            </div>
+
+            {/* ========================================================= */}
+            {/* 6º HISTÓRICO MENSAL DE SALÁRIOS LÍQUIDOS (VICTOR & LETÍCIA)  */}
+            {/* ========================================================= */}
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+              <div className="p-6 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="bg-emerald-500/20 text-emerald-300 text-xs font-extrabold px-2.5 py-0.5 rounded-full border border-emerald-500/30">
+                      6º Passo
+                    </span>
+                    <h3 className="font-bold text-base">Histórico Mensal de Salários Líquidos (Victor Roque & Letícia Roque)</h3>
+                  </div>
+                  <p className="text-xs text-slate-400 mt-1">
+                    Histórico consolidado dos salários líquidos mês a mês, comparando valores oficiais confirmados via contracheque, diferenças do simulador e rendimentos extras.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setAba("salarios")}
+                  className="text-xs font-bold bg-white/10 hover:bg-white/20 text-white px-3.5 py-1.5 rounded-xl border border-white/20 transition flex items-center gap-1.5 shrink-0"
+                >
+                  <Pencil className="w-3.5 h-3.5 text-emerald-400" />
+                  Gerenciar Salários
+                </button>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs text-left">
+                  <thead className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200 uppercase tracking-wider text-[11px]">
+                    <tr>
+                      <th className="px-4 py-3">Mês / Ano</th>
+                      <th className="px-4 py-3 text-blue-900 bg-blue-50/50">Victor: Salário Líquido</th>
+                      <th className="px-4 py-3 text-blue-900 bg-blue-50/50">Victor: Status CC</th>
+                      <th className="px-4 py-3 text-purple-900 bg-purple-50/50">Letícia: Salário Líquido</th>
+                      <th className="px-4 py-3 text-purple-900 bg-purple-50/50">Letícia: Status CC</th>
+                      <th className="px-4 py-3 text-slate-900 bg-slate-100">Renda Familiar Líquida</th>
+                      <th className="px-4 py-3 text-emerald-900 bg-emerald-50">Status Geral</th>
+                      <th className="px-4 py-3 text-center">Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 font-medium">
+                    {["2026-09", "2026-10", "2026-11", "2026-12", "2027-01", "2027-02", "2027-03", "2027-04"].map((mesKey) => {
+                      const isAtual = mesKey === mesSelecionado;
+                      const cc = contracheques[mesKey];
+
+                      // Victor
+                      const vicConfirmado = cc?.victorConfirmado;
+                      const vicValor = vicConfirmado
+                        ? (cc.victorSalarioLiquidoFinal || (cc.victorValorReal + (salVictor.incluirValeRefeicao ? resVictor.valeRefeicaoIndenizatorio : 0) + (cc.victorGanhosExtras || 0)))
+                        : (resVictor.totalDisponivelMes + (cc?.victorGanhosExtras || 0));
+                      const vicDiff = cc?.victorDiferencaCC;
+
+                      // Letícia
+                      const letConfirmada = cc?.leticiaConfirmada;
+                      const letValor = letConfirmada
+                        ? (cc.leticiaSalarioLiquidoFinal || (cc.leticiaValorReal + (salLeticia.incluirValeRefeicao ? resLeticia.valeRefeicaoIndenizatorio : 0) + (cc.leticiaGanhosExtras || 0)))
+                        : (resLeticia.totalDisponivelMes + (cc?.leticiaGanhosExtras || 0));
+                      const letDiff = cc?.leticiaDiferencaCC;
+
+                      const totalCasal = vicValor + letValor;
+
+                      return (
+                        <tr
+                          key={mesKey}
+                          className={`hover:bg-slate-50 transition ${
+                            isAtual ? "bg-amber-50/40 font-semibold" : ""
+                          }`}
+                        >
+                          <td className="px-4 py-3.5 whitespace-nowrap">
+                            <span className="font-bold text-slate-900">{formatarMesAnoLabel(mesKey)}</span>
+                            {isAtual && (
+                              <span className="ml-1.5 text-[10px] bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded font-bold">
+                                Mês Ativo
+                              </span>
+                            )}
+                          </td>
+
+                          {/* Victor Salário */}
+                          <td className="px-4 py-3.5 whitespace-nowrap bg-blue-50/30">
+                            <span className="font-black text-blue-900 text-sm">{formatarMoeda(vicValor)}</span>
+                            {cc?.victorGanhosExtras && cc.victorGanhosExtras > 0 ? (
+                              <span className="block text-[10px] text-emerald-700 font-semibold">
+                                + {formatarMoeda(cc.victorGanhosExtras)} extras
+                              </span>
+                            ) : null}
+                          </td>
+
+                          {/* Victor Status */}
+                          <td className="px-4 py-3.5 whitespace-nowrap bg-blue-50/30">
+                            <span
+                              className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                                vicConfirmado
+                                  ? "bg-emerald-100 text-emerald-800 border-emerald-300"
+                                  : "bg-amber-100 text-amber-800 border-amber-300"
+                              }`}
+                            >
+                              {vicConfirmado ? "✓ Confirmado" : "⏳ Previsão"}
+                            </span>
+                            {vicDiff !== undefined && vicDiff !== 0 && (
+                              <span className={`block text-[10px] mt-0.5 font-bold ${vicDiff > 0 ? "text-emerald-700" : "text-rose-600"}`}>
+                                {vicDiff > 0 ? `+${formatarMoeda(vicDiff)} CC` : `${formatarMoeda(vicDiff)} CC`}
+                              </span>
+                            )}
+                          </td>
+
+                          {/* Letícia Salário */}
+                          <td className="px-4 py-3.5 whitespace-nowrap bg-purple-50/30">
+                            <span className="font-black text-purple-900 text-sm">{formatarMoeda(letValor)}</span>
+                            {cc?.leticiaGanhosExtras && cc.leticiaGanhosExtras > 0 ? (
+                              <span className="block text-[10px] text-emerald-700 font-semibold">
+                                + {formatarMoeda(cc.leticiaGanhosExtras)} extras
+                              </span>
+                            ) : null}
+                          </td>
+
+                          {/* Letícia Status */}
+                          <td className="px-4 py-3.5 whitespace-nowrap bg-purple-50/30">
+                            <span
+                              className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                                letConfirmada
+                                  ? "bg-emerald-100 text-emerald-800 border-emerald-300"
+                                  : "bg-amber-100 text-amber-800 border-amber-300"
+                              }`}
+                            >
+                              {letConfirmada ? "✓ Confirmada" : "⏳ Previsão"}
+                            </span>
+                            {letDiff !== undefined && letDiff !== 0 && (
+                              <span className={`block text-[10px] mt-0.5 font-bold ${letDiff > 0 ? "text-emerald-700" : "text-rose-600"}`}>
+                                {letDiff > 0 ? `+${formatarMoeda(letDiff)} CC` : `${formatarMoeda(letDiff)} CC`}
+                              </span>
+                            )}
+                          </td>
+
+                          {/* Renda Familiar */}
+                          <td className="px-4 py-3.5 whitespace-nowrap bg-slate-50 font-black text-slate-900 text-sm">
+                            {formatarMoeda(totalCasal)}
+                          </td>
+
+                          {/* Status Geral */}
+                          <td className="px-4 py-3.5 whitespace-nowrap bg-emerald-50/40">
+                            {vicConfirmado && letConfirmada ? (
+                              <span className="text-[11px] font-bold text-emerald-800 bg-emerald-100 border border-emerald-300 px-2 py-0.5 rounded-full inline-flex items-center gap-1">
+                                <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                100% Confirmado
+                              </span>
+                            ) : vicConfirmado || letConfirmada ? (
+                              <span className="text-[11px] font-bold text-blue-800 bg-blue-100 border border-blue-300 px-2 py-0.5 rounded-full inline-flex items-center gap-1">
+                                ⏳ 1 Confirmado
+                              </span>
+                            ) : (
+                              <span className="text-[11px] font-bold text-amber-800 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded-full inline-flex items-center gap-1">
+                                ⏳ Previsão Folha
+                              </span>
+                            )}
+                          </td>
+
+                          {/* Ações */}
+                          <td className="px-4 py-3.5 whitespace-nowrap text-center">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                handleSelecionarMes(mesKey);
+                                setAba("salarios");
+                              }}
+                              className="px-2.5 py-1 text-xs font-bold text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-lg border border-blue-200 transition inline-flex items-center gap-1"
+                              title={`Abrir e ajustar salários de ${formatarMesAnoLabel(mesKey)}`}
+                            >
+                              <ExternalLink className="w-3 h-3" />
+                              Ver Mês
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
             </div>
 
@@ -4026,7 +4284,7 @@ function BarraSeletorMes({
   );
 }
 
-// Componente Reutilizável da Aba 3 (Salários & Rendimentos)
+// Componente Reutilizável da Aba 3 (Salários & Rendimentos) com Fluxo em 5 Passos
 function SalarioCard({
   titulo,
   cor,
@@ -4034,10 +4292,13 @@ function SalarioCard({
   onChange,
   resultado,
   mesAnoLabel,
+  mesAno,
   contrachequeConfirmado,
   valorRealContracheque,
-  onConfirmarContracheque,
-  onReverterContracheque,
+  salarioLiquidoFinalConfirmado,
+  diferencaCCConfirmada,
+  onConfirmarSalario,
+  onReverterSalario,
   rendimentosExtras = [],
   onAdicionarExtra,
   onRemoverExtra,
@@ -4048,35 +4309,46 @@ function SalarioCard({
   onChange: (p: ParametrosSalario) => void;
   resultado: ReturnType<typeof calcularContrachequeRS>;
   mesAnoLabel: string;
+  mesAno: string;
   contrachequeConfirmado: boolean;
   valorRealContracheque: number;
-  onConfirmarContracheque: (valor: number) => void;
-  onReverterContracheque: () => void;
+  salarioLiquidoFinalConfirmado?: number;
+  diferencaCCConfirmada?: number;
+  onConfirmarSalario: (valorFolha: number, valorFinalLiquido: number, diferencaCC?: number) => void;
+  onReverterSalario: () => void;
   rendimentosExtras?: RendimentoExtraItem[];
   onAdicionarExtra?: (descricao: string, valor: number) => void;
   onRemoverExtra?: (id: string) => void;
 }) {
   const badgeColor = cor === "blue" ? "bg-blue-600" : "bg-purple-600";
-  const [inputVal, setInputVal] = useState<string>(() => resultado.liquidoFolha.toFixed(2));
+  const borderHighlight = cor === "blue" ? "border-blue-200" : "border-purple-200";
+
+  // Estado local para o valor líquido do contracheque militar (digitado ou via upload)
+  const [valorFolhaInput, setValorFolhaInput] = useState<string>(() =>
+    valorRealContracheque > 0 ? valorRealContracheque.toFixed(2) : resultado.liquidoFolha.toFixed(2)
+  );
   const [statusPDFContracheque, setStatusPDFContracheque] = useState<string>("");
   const [novoExtraDesc, setNovoExtraDesc] = useState("");
   const [novoExtraValor, setNovoExtraValor] = useState("");
   const [editandoValor, setEditandoValor] = useState(false);
-  const [inputValorEditado, setInputValorEditado] = useState<string>(() =>
-    contrachequeConfirmado ? valorRealContracheque.toFixed(2) : resultado.liquidoFolha.toFixed(2)
-  );
+  const [feedbackSalvo, setFeedbackSalvo] = useState(false);
 
-  const totalGanhosExtras = rendimentosExtras.reduce((acc, it) => acc + it.valor, 0);
-
-  // Sincroniza o valor sugerido se mudar a simulação e não estiver confirmado
+  // Sincroniza o valor de folha quando o mês ou status de confirmação muda
   useEffect(() => {
-    if (!contrachequeConfirmado) {
-      setInputVal(resultado.liquidoFolha.toFixed(2));
-      setInputValorEditado(resultado.liquidoFolha.toFixed(2));
+    if (contrachequeConfirmado && valorRealContracheque > 0) {
+      setValorFolhaInput(valorRealContracheque.toFixed(2));
     } else {
-      setInputValorEditado(valorRealContracheque.toFixed(2));
+      setValorFolhaInput(resultado.liquidoFolha.toFixed(2));
     }
-  }, [resultado.liquidoFolha, contrachequeConfirmado, valorRealContracheque]);
+    setEditandoValor(false);
+  }, [mesAno, contrachequeConfirmado, valorRealContracheque, resultado.liquidoFolha]);
+
+  const valorFolhaAtual = parseFloat(valorFolhaInput.replace(",", ".")) || resultado.liquidoFolha;
+  const diferencaCC = valorFolhaAtual - resultado.liquidoFolha;
+  const totalGanhosExtras = rendimentosExtras.reduce((acc, it) => acc + it.valor, 0);
+  const valeRefeicao = params.incluirValeRefeicao ? resultado.valeRefeicaoIndenizatorio : 0;
+  const diarias = resultado.valorDiarias;
+  const totalLiquidoCalculado = valorFolhaAtual + valeRefeicao + diarias + totalGanhosExtras;
 
   const handleUploadContrachequePDF = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -4086,518 +4358,358 @@ function SalarioCard({
       const titularPadrao = cor === "blue" ? "Victor" : "Leticia";
       const dados = await extrairDadosContrachequePDF(file, titularPadrao);
       if (dados.valorLiquido > 0) {
-        onConfirmarContracheque(dados.valorLiquido);
+        setValorFolhaInput(dados.valorLiquido.toFixed(2));
+        const diff = dados.valorLiquido - resultado.liquidoFolha;
+        const totalFinal = dados.valorLiquido + valeRefeicao + diarias + totalGanhosExtras;
+        onConfirmarSalario(dados.valorLiquido, totalFinal, diff);
         setStatusPDFContracheque(
-          `✓ Contracheque militar ${dados.titularDetectado ? `(${dados.titularDetectado})` : ""} confirmado! Líquido a Receber: ${formatarMoeda(dados.valorLiquido)}`
+          `✓ Contracheque militar ${dados.titularDetectado ? `(${dados.titularDetectado})` : ""} lido com sucesso! Líquido oficial: ${formatarMoeda(dados.valorLiquido)}`
         );
+        setFeedbackSalvo(true);
+        setTimeout(() => setFeedbackSalvo(false), 4000);
       } else {
         setStatusPDFContracheque(
-          "Não foi possível extrair automaticamente a linha 'LÍQUIDO A RECEBER' do contracheque. Digite o valor no campo abaixo para confirmar."
+          "Não foi possível extrair a linha 'LÍQUIDO A RECEBER' automaticamente. Digite o valor no campo do 2º passo abaixo."
         );
       }
     } catch (err: any) {
       console.error(err);
-      setStatusPDFContracheque("Erro ao ler o PDF: " + (err?.message || "Arquivo ilegível ou protegido."));
+      setStatusPDFContracheque("Erro ao ler o PDF: " + (err?.message || "Arquivo protegido ou ilegível."));
     }
   };
 
+  const executarSalvarEConfirmar = () => {
+    const totalFinal = valorFolhaAtual + valeRefeicao + diarias + totalGanhosExtras;
+    onConfirmarSalario(valorFolhaAtual, totalFinal, diferencaCC);
+    setEditandoValor(false);
+    setFeedbackSalvo(true);
+    setTimeout(() => setFeedbackSalvo(false), 4000);
+  };
+
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+    <div className={`bg-white rounded-2xl shadow-sm border ${borderHighlight} overflow-hidden space-y-0`}>
+      {/* Cabeçalho do Card */}
       <div className={`${badgeColor} text-white px-6 py-4 flex items-center justify-between`}>
-        <h3 className="font-bold text-base">{titulo}</h3>
-        <span className="text-xs bg-white/20 px-2.5 py-1 rounded-full font-semibold">Tabela RS 2026</span>
+        <div>
+          <div className="flex items-center gap-2">
+            <h3 className="font-bold text-base">{titulo}</h3>
+            <span
+              className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                contrachequeConfirmado
+                  ? "bg-white/20 text-white"
+                  : "bg-amber-400/30 text-amber-100"
+              }`}
+            >
+              {contrachequeConfirmado ? "✓ Salário Confirmado no Mês" : "⏳ Previsão Simulador"}
+            </span>
+          </div>
+          <p className="text-xs text-white/80 mt-0.5">
+            Gestão Salarial RS 2026 • {mesAnoLabel}
+          </p>
+        </div>
+        <span className="text-xs bg-white/10 px-2.5 py-1 rounded-full font-semibold border border-white/20">
+          5 Passos
+        </span>
       </div>
 
-      <div className="p-6 space-y-4">
-        {/* Parâmetros Editáveis */}
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="block text-xs font-semibold text-slate-600 mb-1">Subsídio Base (R$)</label>
-            <input
-              type="number"
-              step="0.01"
-              value={params.subsídioBase}
-              onChange={(e) => onChange({ ...params, subsídioBase: parseFloat(e.target.value) || 0 })}
-              className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm font-semibold"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-slate-600 mb-1">Substituição de Posto</label>
-            <select
-              value={params.tipoSubstituicao}
-              onChange={(e) =>
-                onChange({
-                  ...params,
-                  tipoSubstituicao: e.target.value as ParametrosSalario["tipoSubstituicao"],
-                  diasSubstituicao: e.target.value === "NENHUMA" ? 0 : 30,
-                })
-              }
-              className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm"
-            >
-              <option value="NENHUMA">Sem Substituição</option>
-              <option value="2_SGT">Substituição 2º Sgt</option>
-              <option value="1_SGT">Substituição 1º Sgt</option>
-              <option value="1_TEN">Substituição 1º Ten</option>
-            </select>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <div>
-            <label className="block text-xs font-semibold text-slate-600 mb-1">Dias Substit.</label>
-            <input
-              type="number"
-              min={0}
-              max={30}
-              value={params.diasSubstituicao}
-              onChange={(e) => onChange({ ...params, diasSubstituicao: parseInt(e.target.value) || 0 })}
-              className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-slate-600 mb-1">Horas-Extra (Qtd)</label>
-            <input
-              type="number"
-              min={0}
-              value={params.horasExtrasQtd}
-              onChange={(e) => onChange({ ...params, horasExtrasQtd: parseFloat(e.target.value) || 0 })}
-              className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-slate-600 mb-1">Dias Férias (1/3)</label>
-            <input
-              type="number"
-              min={0}
-              max={30}
-              value={params.diasFerias}
-              onChange={(e) => onChange({ ...params, diasFerias: parseInt(e.target.value) || 0 })}
-              className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-slate-600 mb-1">Diárias (Qtd)</label>
-            <input
-              type="number"
-              min={0}
-              value={params.diariasQtd}
-              onChange={(e) => onChange({ ...params, diariasQtd: parseInt(e.target.value) || 0 })}
-              className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm"
-            />
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="block text-xs font-semibold text-slate-600 mb-1">Acordo Banrisul (R$)</label>
-            <input
-              type="number"
-              step="0.01"
-              value={params.descontoBanrisul}
-              onChange={(e) => onChange({ ...params, descontoBanrisul: parseFloat(e.target.value) || 0 })}
-              className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-slate-600 mb-1">Outros Consignados (GBOEX)</label>
-            <input
-              type="number"
-              step="0.01"
-              value={params.outrosDescontosFixos}
-              onChange={(e) => onChange({ ...params, outrosDescontosFixos: parseFloat(e.target.value) || 0 })}
-              className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm"
-            />
-          </div>
-        </div>
-
-        <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 pt-1">
-          <input
-            type="checkbox"
-            checked={params.incluirValeRefeicao}
-            onChange={(e) => onChange({ ...params, incluirValeRefeicao: e.target.checked })}
-            className="w-4 h-4 accent-emerald-600"
-          />
-          Incluir Auxílio-Refeição RS (Dia 20 — {formatarMoeda(TABELA_RS_2026.VALE_REFEICAO_MENSAL)})
-        </label>
-
-        {/* Demonstrativo Detalhado */}
-        <div className="bg-slate-50 rounded-xl p-4 space-y-2 text-xs border border-slate-200">
-          <div className="flex justify-between text-slate-600">
-            <span>(+) Subsídio Base:</span>
-            <span className="font-semibold">{formatarMoeda(resultado.subsidio)}</span>
-          </div>
-          {resultado.valorSubstituicao > 0 && (
-            <div className="flex justify-between text-emerald-700">
-              <span>(+) Substituição ({params.diasSubstituicao} dias):</span>
-              <span className="font-semibold">+ {formatarMoeda(resultado.valorSubstituicao)}</span>
-            </div>
-          )}
-          {resultado.valorHorasExtras > 0 && (
-            <div className="flex justify-between text-emerald-700">
-              <span>(+) Horas-Extra ({params.horasExtrasQtd}h GSE):</span>
-              <span className="font-semibold">+ {formatarMoeda(resultado.valorHorasExtras)}</span>
-            </div>
-          )}
-          {resultado.valorFeriasTerco > 0 && (
-            <div className="flex justify-between text-emerald-700">
-              <span>(+) 1/3 Férias ({params.diasFerias} dias):</span>
-              <span className="font-semibold">+ {formatarMoeda(resultado.valorFeriasTerco)}</span>
-            </div>
-          )}
-          <div className="border-t border-slate-200 pt-1.5 flex justify-between font-bold text-slate-800">
-            <span>Total Bruto Tributável:</span>
-            <span>{formatarMoeda(resultado.totalBrutoTributavel)}</span>
+      <div className="p-6 space-y-6">
+        {/* ========================================================= */}
+        {/* 1º PASSO: PREVISÃO DE SALÁRIO (SIMULADOR RS 2026)         */}
+        {/* ========================================================= */}
+        <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/50 space-y-4">
+          <div className="flex items-center justify-between">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-2">
+              <span className="bg-blue-600 text-white w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black">
+                1º
+              </span>
+              Previsão de Salário • Simulador Militar RS 2026
+            </h4>
+            <span className="text-[11px] font-semibold text-slate-500">
+              Previsto: {formatarMoeda(resultado.totalDisponivelMes)}
+            </span>
           </div>
 
-          <div className="flex justify-between text-rose-600">
-            <span>(-) IPE Previdência Militar (SPSMER):</span>
-            <span>- {formatarMoeda(resultado.ipePrev)}</span>
-          </div>
-          <div className="flex justify-between text-rose-600">
-            <span>(-) IPE Saúde (3,6%):</span>
-            <span>- {formatarMoeda(resultado.ipeSaude)}</span>
-          </div>
-          <div className="flex justify-between text-rose-600">
-            <span>(-) IRRF (Tabela 2026 + Redutor Lei 15.270):</span>
-            <span>- {formatarMoeda(resultado.irrf)}</span>
-          </div>
-          <div className="flex justify-between text-rose-600">
-            <span>(-) Consignados / Banrisul / GBOEX:</span>
-            <span>- {formatarMoeda(resultado.descontosConsignados)}</span>
-          </div>
-
-          <div className="border-t border-slate-300 pt-2 flex justify-between text-sm font-extrabold text-slate-900">
-            <span>Líquido em Conta (Contracheque):</span>
-            <span className="text-emerald-600">{formatarMoeda(resultado.liquidoFolha)}</span>
-          </div>
-
-          {(resultado.valeRefeicaoIndenizatorio > 0 || resultado.valorDiarias > 0) && (
-            <div className="pt-1 space-y-1 text-slate-600">
-              {resultado.valeRefeicaoIndenizatorio > 0 && (
-                <div className="flex justify-between">
-                  <span>(+) Vale-Refeição (Dia 20 - Isento):</span>
-                  <span>+ {formatarMoeda(resultado.valeRefeicaoIndenizatorio)}</span>
-                </div>
-              )}
-              {resultado.valorDiarias > 0 && (
-                <div className="flex justify-between">
-                  <span>(+) Diárias ({params.diariasQtd} diárias - Isento):</span>
-                  <span>+ {formatarMoeda(resultado.valorDiarias)}</span>
-                </div>
-              )}
-              <div className="flex justify-between font-bold text-slate-900 pt-1 border-t border-slate-200">
-                <span>Total Disponível no Mês:</span>
-                <span>{formatarMoeda(resultado.totalDisponivelMes + totalGanhosExtras)}</span>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Barra de Confirmação do Salário Calculado & Opção de Edição */}
-        <div className="p-4 rounded-xl border border-emerald-300 bg-gradient-to-r from-emerald-50 via-teal-50 to-emerald-50 shadow-sm space-y-3">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          {/* Campos do Simulador */}
+          <div className="grid grid-cols-2 gap-3">
             <div>
-              <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-800 flex items-center gap-1.5">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                Confirmação do Salário Líquido ({mesAnoLabel})
-              </span>
-              <div className="flex items-baseline gap-2 mt-1">
-                <span className="text-2xl font-black text-emerald-700">
-                  {formatarMoeda(contrachequeConfirmado ? valorRealContracheque : resultado.liquidoFolha)}
-                </span>
-                <span className="text-xs text-slate-500 font-medium">
-                  {contrachequeConfirmado ? "(Valor Oficial Confirmado)" : "(Líquido Calculado)"}
-                </span>
-              </div>
-              {(params.incluirValeRefeicao || resultado.valorDiarias > 0 || totalGanhosExtras > 0) && (
-                <p className="text-[11px] text-slate-500 mt-0.5">
-                  Total com VR, Diárias e Extras:{" "}
-                  <strong className="text-slate-800">
-                    {formatarMoeda(
-                      (contrachequeConfirmado ? valorRealContracheque : resultado.liquidoFolha) +
-                        (params.incluirValeRefeicao ? resultado.valeRefeicaoIndenizatorio : 0) +
-                        resultado.valorDiarias +
-                        totalGanhosExtras
-                    )}
-                  </strong>
-                </p>
-              )}
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-              {contrachequeConfirmado ? (
-                <>
-                  <span className="text-xs font-bold text-emerald-800 bg-emerald-100 border border-emerald-300 px-3 py-2 rounded-xl flex items-center gap-1.5 shadow-sm">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                    Confirmado no Mês
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEditandoValor(true);
-                      setInputValorEditado(valorRealContracheque.toFixed(2));
-                    }}
-                    className="inline-flex items-center gap-1.5 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold px-3 py-2 rounded-xl border border-slate-300 shadow-sm transition"
-                    title="Editar valor caso tenha algo diferente"
-                  >
-                    <Pencil className="w-3.5 h-3.5 text-blue-600" />
-                    Editar Valor
-                  </button>
-                  <button
-                    type="button"
-                    onClick={onReverterContracheque}
-                    className="text-xs text-slate-500 hover:text-slate-800 font-semibold px-2.5 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 transition"
-                    title="Voltar para a previsão calculada do simulador"
-                  >
-                    ↺ Recalcular
-                  </button>
-                </>
-              ) : (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => onConfirmarContracheque(resultado.liquidoFolha)}
-                    className="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs px-4 py-2.5 rounded-xl shadow-md shadow-emerald-600/25 transition active:scale-95"
-                  >
-                    <CheckCircle2 className="w-4 h-4" />
-                    Confirmar Salário Líquido ({formatarMoeda(resultado.liquidoFolha)})
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEditandoValor(true);
-                      setInputValorEditado(resultado.liquidoFolha.toFixed(2));
-                    }}
-                    className="inline-flex items-center gap-1.5 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold px-3 py-2.5 rounded-xl border border-slate-300 shadow-sm transition"
-                    title="Editar valor caso tenha algo diferente"
-                  >
-                    <Pencil className="w-3.5 h-3.5 text-slate-500" />
-                    Editar / Outro Valor
-                  </button>
-                </>
-              )}
-            </div>
-          </div>
-
-          {/* Editor Inline de Valor Diferente */}
-          {editandoValor && (
-            <div className="pt-2 border-t border-emerald-200/80 flex flex-col sm:flex-row items-center gap-2">
-              <span className="text-xs font-semibold text-slate-700 whitespace-nowrap">
-                Ajustar Valor Líquido (R$):
-              </span>
+              <label className="block text-[11px] font-semibold text-slate-600 mb-1">Subsídio Base (R$)</label>
               <input
                 type="number"
                 step="0.01"
-                placeholder={resultado.liquidoFolha.toFixed(2)}
-                value={inputValorEditado}
-                onChange={(e) => setInputValorEditado(e.target.value)}
-                className="w-full sm:w-44 border border-slate-300 rounded-lg px-3 py-1.5 text-sm font-bold text-slate-900 bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                autoFocus
+                value={params.subsídioBase}
+                onChange={(e) => onChange({ ...params, subsídioBase: parseFloat(e.target.value) || 0 })}
+                className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-semibold bg-white"
               />
-              <div className="flex gap-2 w-full sm:w-auto">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const val = parseFloat(inputValorEditado.replace(",", "."));
-                    if (!isNaN(val) && val > 0) {
-                      onConfirmarContracheque(val);
-                      setEditandoValor(false);
-                    }
-                  }}
-                  className="flex-1 sm:flex-none bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 py-1.5 rounded-lg shadow-sm transition"
-                >
-                  Salvar e Confirmar
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setEditandoValor(false)}
-                  className="text-xs text-slate-500 hover:text-slate-700 px-2.5 py-1.5"
-                >
-                  Cancelar
-                </button>
-              </div>
             </div>
-          )}
+            <div>
+              <label className="block text-[11px] font-semibold text-slate-600 mb-1">Substituição de Posto</label>
+              <select
+                value={params.tipoSubstituicao}
+                onChange={(e) =>
+                  onChange({
+                    ...params,
+                    tipoSubstituicao: e.target.value as ParametrosSalario["tipoSubstituicao"],
+                    diasSubstituicao: e.target.value === "NENHUMA" ? 0 : 30,
+                  })
+                }
+                className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs bg-white"
+              >
+                <option value="NENHUMA">Sem Substituição</option>
+                <option value="2_SGT">Substituição 2º Sgt</option>
+                <option value="1_SGT">Substituição 1º Sgt</option>
+                <option value="1_TEN">Substituição 1º Ten</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+            <div>
+              <label className="block text-[10px] font-semibold text-slate-600 mb-1">Dias Substit.</label>
+              <input
+                type="number"
+                min={0}
+                max={30}
+                value={params.diasSubstituicao}
+                onChange={(e) => onChange({ ...params, diasSubstituicao: parseInt(e.target.value) || 0 })}
+                className="w-full border border-slate-300 rounded-lg px-2 py-1 text-xs bg-white"
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] font-semibold text-slate-600 mb-1">Horas-Extra (h)</label>
+              <input
+                type="number"
+                min={0}
+                value={params.horasExtrasQtd}
+                onChange={(e) => onChange({ ...params, horasExtrasQtd: parseFloat(e.target.value) || 0 })}
+                className="w-full border border-slate-300 rounded-lg px-2 py-1 text-xs bg-white"
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] font-semibold text-slate-600 mb-1">Dias Férias (1/3)</label>
+              <input
+                type="number"
+                min={0}
+                max={30}
+                value={params.diasFerias}
+                onChange={(e) => onChange({ ...params, diasFerias: parseInt(e.target.value) || 0 })}
+                className="w-full border border-slate-300 rounded-lg px-2 py-1 text-xs bg-white"
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] font-semibold text-slate-600 mb-1">Diárias (Qtd)</label>
+              <input
+                type="number"
+                min={0}
+                value={params.diariasQtd}
+                onChange={(e) => onChange({ ...params, diariasQtd: parseInt(e.target.value) || 0 })}
+                className="w-full border border-slate-300 rounded-lg px-2 py-1 text-xs bg-white"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-[11px] font-semibold text-slate-600 mb-1">Acordo Banrisul (R$)</label>
+              <input
+                type="number"
+                step="0.01"
+                value={params.descontoBanrisul}
+                onChange={(e) => onChange({ ...params, descontoBanrisul: parseFloat(e.target.value) || 0 })}
+                className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs bg-white"
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] font-semibold text-slate-600 mb-1">Outros Consignados (GBOEX)</label>
+              <input
+                type="number"
+                step="0.01"
+                value={params.outrosDescontosFixos}
+                onChange={(e) => onChange({ ...params, outrosDescontosFixos: parseFloat(e.target.value) || 0 })}
+                className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs bg-white"
+              />
+            </div>
+          </div>
+
+          <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 pt-1">
+            <input
+              type="checkbox"
+              checked={params.incluirValeRefeicao}
+              onChange={(e) => onChange({ ...params, incluirValeRefeicao: e.target.checked })}
+              className="w-4 h-4 accent-emerald-600"
+            />
+            Incluir Auxílio-Refeição RS (Dia 20 — {formatarMoeda(TABELA_RS_2026.VALE_REFEICAO_MENSAL)})
+          </label>
+
+          {/* Demonstrativo do Cálculo Previsto */}
+          <div className="bg-white rounded-lg p-3 space-y-1.5 text-xs border border-slate-200">
+            <div className="flex justify-between text-slate-600">
+              <span>(+) Subsídio Base:</span>
+              <span className="font-semibold">{formatarMoeda(resultado.subsidio)}</span>
+            </div>
+            {resultado.valorSubstituicao > 0 && (
+              <div className="flex justify-between text-emerald-700">
+                <span>(+) Substituição ({params.diasSubstituicao}d):</span>
+                <span>+{formatarMoeda(resultado.valorSubstituicao)}</span>
+              </div>
+            )}
+            {resultado.valorHorasExtras > 0 && (
+              <div className="flex justify-between text-emerald-700">
+                <span>(+) Horas-Extra ({params.horasExtrasQtd}h):</span>
+                <span>+{formatarMoeda(resultado.valorHorasExtras)}</span>
+              </div>
+            )}
+            {resultado.valorFeriasTerco > 0 && (
+              <div className="flex justify-between text-emerald-700">
+                <span>(+) 1/3 Férias ({params.diasFerias}d):</span>
+                <span>+{formatarMoeda(resultado.valorFeriasTerco)}</span>
+              </div>
+            )}
+            <div className="border-t border-slate-100 pt-1 flex justify-between font-bold text-slate-800">
+              <span>Total Bruto Tributável:</span>
+              <span>{formatarMoeda(resultado.totalBrutoTributavel)}</span>
+            </div>
+            <div className="flex justify-between text-rose-600 text-[11px]">
+              <span>(-) Previdência Militar (14%):</span>
+              <span>-{formatarMoeda(resultado.ipePrev)}</span>
+            </div>
+            <div className="flex justify-between text-rose-600 text-[11px]">
+              <span>(-) IPE Saúde (3,1%):</span>
+              <span>-{formatarMoeda(resultado.ipeSaude)}</span>
+            </div>
+            <div className="flex justify-between text-rose-600 text-[11px]">
+              <span>(-) IRRF RS:</span>
+              <span>-{formatarMoeda(resultado.irrf)}</span>
+            </div>
+            {resultado.descontosConsignados > 0 && (
+              <div className="flex justify-between text-rose-600 text-[11px]">
+                <span>(-) Consignados / Banrisul:</span>
+                <span>-{formatarMoeda(resultado.descontosConsignados)}</span>
+              </div>
+            )}
+            <div className="border-t border-slate-200 pt-1.5 flex justify-between font-extrabold text-slate-900">
+              <span>Líquido Folha Previsto (CC):</span>
+              <span className="text-blue-700">{formatarMoeda(resultado.liquidoFolha)}</span>
+            </div>
+          </div>
         </div>
 
-        {/* Confirmação do Contracheque Real do Mês */}
-        <div className="mt-4 p-4 rounded-xl border border-slate-200 bg-slate-50 space-y-3">
+        {/* ========================================================= */}
+        {/* 2º PASSO: ENVIO DO CONTRACHEQUE & COMPARATIVO DE DIFERENÇAS */}
+        {/* ========================================================= */}
+        <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/50 space-y-3">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-700">
-              Contracheque Oficial ({mesAnoLabel})
-            </span>
+            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-2">
+              <span className="bg-purple-600 text-white w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black">
+                2º
+              </span>
+              Envio do Contracheque & Comparativo de Diferenças
+            </h4>
             <span
-              className={`text-[11px] font-bold px-2 py-0.5 rounded-full border ${
+              className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
                 contrachequeConfirmado
                   ? "bg-emerald-100 text-emerald-800 border-emerald-300"
                   : "bg-amber-100 text-amber-800 border-amber-300"
               }`}
             >
-              {contrachequeConfirmado ? "✓ Líquido Confirmado no Mês" : "⏳ Previsão / Simulador"}
+              {contrachequeConfirmado ? "✓ CC Confirmado" : "Aguardando CC"}
             </span>
           </div>
 
-          {contrachequeConfirmado ? (
-            <div className="space-y-2 bg-emerald-50/60 p-3 rounded-lg border border-emerald-200">
-              <div className="flex justify-between items-center">
-                <span className="text-xs text-emerald-900 font-semibold">Líquido a Receber Oficial:</span>
-                <span className="text-base font-black text-emerald-700">
-                  {formatarMoeda(valorRealContracheque)}
-                </span>
-              </div>
-              <div className="flex justify-between items-center text-xs text-slate-500 pt-1 border-t border-emerald-200/60">
-                <span>Previsão Folha (Líquido): {formatarMoeda(resultado.liquidoFolha)}</span>
-                <span className={valorRealContracheque >= resultado.liquidoFolha ? "text-emerald-700 font-bold" : "text-rose-600 font-bold"}>
-                  Diferença: {formatarMoeda(valorRealContracheque - resultado.liquidoFolha)}
-                </span>
-              </div>
-              {(params.incluirValeRefeicao || resultado.valorDiarias > 0 || totalGanhosExtras > 0) && (
-                <div className="text-[11px] text-slate-600 pt-1.5 border-t border-emerald-200/50 flex flex-col gap-0.5">
-                  <div className="flex justify-between">
-                    <span>Líquido Contracheque:</span>
-                    <span className="font-semibold">{formatarMoeda(valorRealContracheque)}</span>
-                  </div>
-                  {params.incluirValeRefeicao && (
-                    <div className="flex justify-between text-emerald-800">
-                      <span>(+) Auxílio-Refeição (Dia 20):</span>
-                      <span className="font-semibold">+{formatarMoeda(resultado.valeRefeicaoIndenizatorio)}</span>
-                    </div>
-                  )}
-                  {resultado.valorDiarias > 0 && (
-                    <div className="flex justify-between text-emerald-800">
-                      <span>(+) Diárias do Mês:</span>
-                      <span className="font-semibold">+{formatarMoeda(resultado.valorDiarias)}</span>
-                    </div>
-                  )}
-                  {totalGanhosExtras > 0 && (
-                    <div className="flex justify-between text-emerald-800">
-                      <span>(+) Ganhos Extras Fora Contracheque:</span>
-                      <span className="font-semibold">+{formatarMoeda(totalGanhosExtras)}</span>
-                    </div>
-                  )}
-                  <div className="flex justify-between font-bold text-slate-900 pt-1 border-t border-emerald-200/80">
-                    <span>Total Disponível no Mês:</span>
-                    <span>
-                      {formatarMoeda(
-                        valorRealContracheque +
-                          (params.incluirValeRefeicao ? resultado.valeRefeicaoIndenizatorio : 0) +
-                          resultado.valorDiarias +
-                          totalGanhosExtras
-                      )}
-                    </span>
-                  </div>
-                </div>
-              )}
-              <div className="flex flex-wrap gap-2 pt-1">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEditandoValor(true);
-                    setInputValorEditado(valorRealContracheque.toFixed(2));
-                  }}
-                  className="py-1.5 px-3 bg-white hover:bg-slate-50 text-slate-700 font-semibold text-xs rounded-lg border border-slate-300 transition shadow-sm inline-flex items-center gap-1"
-                >
-                  <Pencil className="w-3.5 h-3.5 text-blue-600" />
-                  Editar Valor
-                </button>
-                <label className="flex-1 cursor-pointer inline-flex items-center justify-center gap-1.5 py-1.5 px-3 bg-white hover:bg-slate-50 text-slate-700 font-semibold text-xs rounded-lg border border-slate-300 transition text-center shadow-sm">
-                  <FileText className="w-3.5 h-3.5 text-emerald-600" />
-                  Substituir por outro PDF
-                  <input
-                    type="file"
-                    accept="application/pdf"
-                    onChange={handleUploadContrachequePDF}
-                    className="hidden"
-                  />
-                </label>
-                <button
-                  type="button"
-                  onClick={onReverterContracheque}
-                  className="py-1.5 px-3 bg-white hover:bg-slate-50 text-slate-700 font-semibold text-xs rounded-lg border border-slate-300 transition"
-                >
-                  Voltar p/ Previsão
-                </button>
-              </div>
-              {statusPDFContracheque && (
-                <p className="text-[11px] text-blue-700 font-medium pt-1">{statusPDFContracheque}</p>
-              )}
-            </div>
-          ) : (
-            <div className="space-y-3">
-              <p className="text-xs text-slate-500">
-                Envie o PDF do contracheque militar para extrair e confirmar o <strong>Líquido a Receber</strong> oficial, ou digite o valor abaixo:
-              </p>
+          <p className="text-[11px] text-slate-500">
+            Envie o PDF do contracheque militar ou informe o valor líquido oficial da folha para confrontar com a previsão do simulador:
+          </p>
 
-              {/* Botão de Envio de PDF do Contracheque */}
-              <div>
-                <label className="cursor-pointer inline-flex items-center justify-center gap-2 w-full py-2.5 px-4 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-800 font-bold text-xs rounded-xl shadow-sm transition">
-                  <FileText className="w-4 h-4 text-emerald-600" />
-                  📄 Incluir PDF do Contracheque ({cor === "blue" ? "Victor" : "Letícia"})
-                  <input
-                    type="file"
-                    accept="application/pdf"
-                    onChange={handleUploadContrachequePDF}
-                    className="hidden"
-                  />
-                </label>
-              </div>
+          {/* Botão de Envio de PDF */}
+          <label className="cursor-pointer inline-flex items-center justify-center gap-2 w-full py-2.5 px-4 bg-white hover:bg-slate-50 border border-slate-300 text-slate-800 font-bold text-xs rounded-xl shadow-sm transition">
+            <FileText className="w-4 h-4 text-blue-600" />
+            📄 Enviar PDF do Contracheque Militar ({titulo.split(" ")[0]})
+            <input
+              type="file"
+              accept="application/pdf"
+              onChange={handleUploadContrachequePDF}
+              className="hidden"
+            />
+          </label>
 
-              {statusPDFContracheque && (
-                <div className="p-2.5 rounded-lg bg-blue-50 border border-blue-200 text-blue-900 text-xs flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 shrink-0 text-blue-600" />
-                  <span>{statusPDFContracheque}</span>
-                </div>
-              )}
-
-              <div className="flex items-center gap-2 pt-1">
-                <span className="text-[11px] text-slate-500 font-semibold uppercase whitespace-nowrap">
-                  Líquido a Receber:
-                </span>
-                <input
-                  type="number"
-                  step="0.01"
-                  placeholder={resultado.liquidoFolha.toFixed(2)}
-                  value={inputVal}
-                  onChange={(e) => setInputVal(e.target.value)}
-                  className="flex-1 border border-slate-300 rounded-xl px-3 py-1.5 text-sm font-semibold"
-                />
-                <button
-                  type="button"
-                  onClick={() => {
-                    const val = parseFloat(inputVal.replace(",", "."));
-                    if (!isNaN(val) && val > 0) onConfirmarContracheque(val);
-                  }}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-3.5 py-1.5 rounded-xl transition shadow-sm"
-                >
-                  Confirmar Líquido
-                </button>
-              </div>
-            </div>
+          {statusPDFContracheque && (
+            <p className="text-[11px] text-blue-700 bg-blue-50 border border-blue-200 p-2 rounded-lg font-medium">
+              {statusPDFContracheque}
+            </p>
           )}
+
+          {/* Campo de Digitação Manual do Líquido do CC */}
+          <div className="flex items-center gap-2 pt-1">
+            <span className="text-xs font-semibold text-slate-700 whitespace-nowrap">
+              Líquido do CC (R$):
+            </span>
+            <input
+              type="number"
+              step="0.01"
+              value={valorFolhaInput}
+              onChange={(e) => setValorFolhaInput(e.target.value)}
+              placeholder={resultado.liquidoFolha.toFixed(2)}
+              className="flex-1 border border-slate-300 rounded-lg px-3 py-1.5 text-xs font-bold bg-white focus:ring-2 focus:ring-purple-500 focus:outline-none"
+            />
+          </div>
+
+          {/* Box de Comparativo de Diferenças (CC vs Previsão Calculada) */}
+          <div className="bg-white p-3 rounded-xl border border-slate-200 space-y-2">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-slate-500">Líquido Contracheque:</span>
+              <strong className="text-slate-800">{formatarMoeda(valorFolhaAtual)}</strong>
+            </div>
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-slate-500">Previsão Simulador:</span>
+              <strong className="text-slate-600">{formatarMoeda(resultado.liquidoFolha)}</strong>
+            </div>
+            <div
+              className={`p-2.5 rounded-lg border text-xs flex items-center justify-between font-bold ${
+                diferencaCC > 0.05
+                  ? "bg-emerald-50 text-emerald-800 border-emerald-300"
+                  : diferencaCC < -0.05
+                  ? "bg-rose-50 text-rose-800 border-rose-300"
+                  : "bg-blue-50 text-blue-800 border-blue-200"
+              }`}
+            >
+              <span>Diferença (CC vs Previsão):</span>
+              <span>
+                {diferencaCC > 0.05
+                  ? `+ ${formatarMoeda(diferencaCC)} (CC veio a maior)`
+                  : diferencaCC < -0.05
+                  ? `- ${formatarMoeda(Math.abs(diferencaCC))} (CC veio a menor)`
+                  : "R$ 0,00 (Exatamente conforme previsto)"}
+              </span>
+            </div>
+          </div>
         </div>
 
-        {/* Rendimentos Extras Fora do Contracheque (Bicos, Vendas, Serviços, etc.) */}
-        <div className="mt-4 p-4 rounded-xl border border-slate-200 bg-slate-50 space-y-3">
+        {/* ========================================================= */}
+        {/* 3º PASSO: ADIÇÃO DE VALORES EXTRAS FORA DO CONTRACHEQUE    */}
+        {/* ========================================================= */}
+        <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/50 space-y-3">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
-              <PlusCircle className="w-3.5 h-3.5 text-emerald-600" />
-              Ganhos Extras Fora do Contracheque
-            </span>
-            <span className="text-xs font-black text-emerald-600">
-              Total: {formatarMoeda(totalGanhosExtras)}
+            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-2">
+              <span className="bg-amber-600 text-white w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black">
+                3º
+              </span>
+              Valores Extras Fora do Contracheque
+            </h4>
+            <span className="text-xs font-black text-amber-700">
+              Total: + {formatarMoeda(totalGanhosExtras)}
             </span>
           </div>
+
           <p className="text-[11px] text-slate-500">
-            Adicione valores recebidos fora da folha de pagamento (bicos, plantões adicionais, vendas, freelas) para somar ao total disponível do mês:
+            Adicione valores recebidos fora da folha oficial (bicos, plantões extras, vendas, freelas, diárias extras):
           </p>
 
           <div className="flex gap-2">
             <input
               type="text"
-              placeholder="Descrição (ex: Plantão extra, Venda)"
+              placeholder="Descrição (ex: Plantão extra, Bico)"
               value={novoExtraDesc}
               onChange={(e) => setNovoExtraDesc(e.target.value)}
-              className="flex-1 border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+              className="flex-1 border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs bg-white focus:ring-2 focus:ring-amber-500 focus:outline-none"
             />
             <input
               type="number"
@@ -4605,7 +4717,7 @@ function SalarioCard({
               placeholder="R$ 0,00"
               value={novoExtraValor}
               onChange={(e) => setNovoExtraValor(e.target.value)}
-              className="w-24 border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-semibold bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+              className="w-24 border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-semibold bg-white focus:ring-2 focus:ring-amber-500 focus:outline-none"
             />
             <button
               type="button"
@@ -4617,7 +4729,7 @@ function SalarioCard({
                   setNovoExtraValor("");
                 }
               }}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-3 py-1.5 rounded-lg transition shadow-sm whitespace-nowrap"
+              className="bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs px-3 py-1.5 rounded-lg transition shadow-sm whitespace-nowrap"
             >
               + Adicionar
             </button>
@@ -4635,7 +4747,7 @@ function SalarioCard({
                         type="button"
                         onClick={() => onRemoverExtra(extra.id)}
                         className="text-slate-400 hover:text-rose-600 p-0.5 font-bold"
-                        title="Remover ganho extra"
+                        title="Remover este ganho extra"
                       >
                         ✕
                       </button>
@@ -4643,6 +4755,153 @@ function SalarioCard({
                   </div>
                 </div>
               ))}
+            </div>
+          )}
+        </div>
+
+        {/* ========================================================= */}
+        {/* 4º PASSO: CONFIRMAÇÃO DO SALÁRIO LÍQUIDO MENSAL           */}
+        {/* ========================================================= */}
+        <div className="border border-emerald-300 bg-emerald-50/50 rounded-xl p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-emerald-900 flex items-center gap-2">
+              <span className="bg-emerald-600 text-white w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black">
+                4º
+              </span>
+              Composição do Salário Líquido Mensal
+            </h4>
+            <span className="text-xs font-bold text-emerald-700">
+              Total a Receber
+            </span>
+          </div>
+
+          <div className="bg-white p-3.5 rounded-xl border border-emerald-200 space-y-1.5 text-xs">
+            <div className="flex justify-between text-slate-700">
+              <span>Líquido da Folha (CC):</span>
+              <span className="font-bold">{formatarMoeda(valorFolhaAtual)}</span>
+            </div>
+            {valeRefeicao > 0 && (
+              <div className="flex justify-between text-emerald-800">
+                <span>(+) Auxílio-Refeição (Dia 20):</span>
+                <span className="font-bold">+{formatarMoeda(valeRefeicao)}</span>
+              </div>
+            )}
+            {diarias > 0 && (
+              <div className="flex justify-between text-emerald-800">
+                <span>(+) Diárias do Mês:</span>
+                <span className="font-bold">+{formatarMoeda(diarias)}</span>
+              </div>
+            )}
+            {totalGanhosExtras > 0 && (
+              <div className="flex justify-between text-amber-700">
+                <span>(+) Ganhos Extras Fora CC:</span>
+                <span className="font-bold">+{formatarMoeda(totalGanhosExtras)}</span>
+              </div>
+            )}
+            <div className="border-t border-emerald-200 pt-2 flex justify-between items-baseline">
+              <span className="font-black text-slate-900 text-sm">Salário Líquido Total Disponível:</span>
+              <span className="font-black text-emerald-700 text-lg">
+                {formatarMoeda(totalLiquidoCalculado)}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* ========================================================= */}
+        {/* 5º PASSO: SALVAR PARA O MÊS E LEVAR PARA A TELA 1         */}
+        {/* ========================================================= */}
+        <div className="border border-slate-200 rounded-xl p-4 bg-white shadow-sm space-y-3">
+          <div className="flex items-center justify-between">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-2">
+              <span className="bg-slate-900 text-white w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black">
+                5º
+              </span>
+              Salvar Valor e Levar para a Tela 1 (Tela Inicial)
+            </h4>
+          </div>
+
+          {feedbackSalvo && (
+            <div className="p-3 bg-emerald-100 border border-emerald-300 text-emerald-900 rounded-xl text-xs font-bold flex items-center gap-2 animate-fade-in">
+              <CheckCircle2 className="w-4 h-4 text-emerald-700 shrink-0" />
+              <span>
+                ✓ Salário de {mesAnoLabel} salvo com sucesso! O valor de {formatarMoeda(totalLiquidoCalculado)} já está sincronizado com a Tela Inicial.
+              </span>
+            </div>
+          )}
+
+          {contrachequeConfirmado ? (
+            <div className="space-y-3">
+              <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-300 flex items-center justify-between">
+                <div>
+                  <span className="text-[11px] font-extrabold uppercase text-emerald-800 flex items-center gap-1.5">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                    Salário Líquido Confirmado e Salvo no Banco
+                  </span>
+                  <p className="text-xl font-black text-emerald-700 mt-0.5">
+                    {formatarMoeda(salarioLiquidoFinalConfirmado || totalLiquidoCalculado)}
+                  </p>
+                  <p className="text-[11px] text-emerald-800/80 mt-0.5">
+                    Ativo na Tela Inicial (KPIs, saldos individuais e balanço familiar).
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEditandoValor(true)}
+                  className="inline-flex items-center gap-1.5 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold px-3 py-2 rounded-xl border border-slate-300 shadow-sm transition"
+                >
+                  <Pencil className="w-3.5 h-3.5 text-blue-600" />
+                  Editar / Reajustar Valores
+                </button>
+                <button
+                  type="button"
+                  onClick={onReverterSalario}
+                  className="text-xs text-slate-500 hover:text-slate-800 font-semibold px-3 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 transition"
+                  title="Voltar para a previsão calculada do simulador"
+                >
+                  ↺ Voltar para Previsão
+                </button>
+              </div>
+
+              {editandoValor && (
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2 pt-2">
+                  <p className="text-xs text-slate-600 font-semibold">
+                    Deseja alterar o valor líquido final para salvar novamente?
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={executarSalvarEConfirmar}
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 py-2 rounded-lg shadow-sm transition"
+                    >
+                      Salvar Novo Valor ({formatarMoeda(totalLiquidoCalculado)})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEditandoValor(false)}
+                      className="text-xs text-slate-500 hover:text-slate-700 px-3 py-2"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <button
+                type="button"
+                onClick={executarSalvarEConfirmar}
+                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-black text-sm py-3 px-4 rounded-xl shadow-md shadow-emerald-600/25 transition active:scale-[0.99] flex items-center justify-center gap-2"
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                Confirmar e Salvar Salário Líquido ({formatarMoeda(totalLiquidoCalculado)})
+              </button>
+              <p className="text-[11px] text-slate-400 text-center">
+                Clique acima para confirmar o fechamento do mês. O valor será transportado para a Tela Inicial e gravado no banco de dados.
+              </p>
             </div>
           )}
         </div>
