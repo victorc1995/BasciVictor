@@ -16,6 +16,8 @@ export interface Transaction {
   mesCompra?: string;
   mesPagamento?: string;
   diaVencimento?: number;
+  isFormatoConta?: boolean;
+  isTransferenciaLeticia?: boolean;
 }
 
 export interface CardTransaction {
@@ -82,6 +84,16 @@ export interface AcertoMensal {
   explicacao: string;
 }
 
+export interface ContaRealVictorInfo {
+  entradasTotal: number;
+  saidasTotal: number;
+  saldoFinal: number;
+  transferenciaLeticia: number;
+  subsidio: number;
+  valeAlimentacao: number;
+  itensConta: Transaction[];
+}
+
 export interface MonthSummary {
   mesAno: string; // MM/YYYY
   label: string; // Ex: Novembro 2026
@@ -105,6 +117,9 @@ export interface MonthSummary {
   hasNegativeBeforeDay20: boolean;
   lowestBalanceBeforeDay20: number;
   dayLowestBalance: number;
+  contaRealVictor: ContaRealVictorInfo;
+  despesasReaisFamilia: number;
+  saldoConsolidadoFamilia: number;
 }
 
 export interface DailyCashFlow {

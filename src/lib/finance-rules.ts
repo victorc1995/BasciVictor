@@ -9,6 +9,7 @@ import {
   Payer,
   AcertoMensal,
   SimulationParams,
+  ContaRealVictorInfo,
 } from '@/types/finance';
 import { SheetSnapshotData } from './snapshot-data';
 import {
@@ -28,7 +29,6 @@ const EMERGENCY_RESERVE_LOCKED = 5000.0;
 export function parseGerenciador(rows: (string | number | null)[][]): Transaction[] {
   const transactions: Transaction[] = [];
 
-  // Linhas de dados começam geralmente a partir do índice 1 (linha 7 da planilha)
   for (let i = 1; i < rows.length; i++) {
     const row = rows[i];
     if (!row || row.length === 0) continue;
@@ -52,8 +52,6 @@ export function parseGerenciador(rows: (string | number | null)[][]): Transactio
     const status = String(row[9] || 'Pendente').trim();
 
     // Identificação de quem é a responsabilidade
-    // Na planilha a coluna F (parcelas) frequentemente armazena 'div', 'leh', 'vic', 'rp'
-    // E a coluna formato ou descrição também pode conter referências
     let quem: Payer = 'DIV';
     if (parcelas) {
       quem = normalizePayer(parcelas);
@@ -62,6 +60,8 @@ export function parseGerenciador(rows: (string | number | null)[][]): Transactio
     }
 
     const dateInfo = parseDateComponents(dataVenc) || parseDateComponents(data);
+    const isFormatoConta = formato.toLowerCase() === 'conta';
+    const isTransferenciaLeticia = descricao.toLowerCase().startsWith('contas ');
 
     transactions.push({
       id: `gerenciador-${i}`,
@@ -78,6 +78,8 @@ export function parseGerenciador(rows: (string | number | null)[][]): Transactio
       quem,
       mesPagamento: dateInfo?.mesAno,
       diaVencimento: dateInfo?.dia || 1,
+      isFormatoConta,
+      isTransferenciaLeticia,
     });
   }
 
@@ -94,7 +96,6 @@ export function parseCardsData(
   const cardTxList: CardTransaction[] = [];
 
   // 1. Fatura Sicredi
-  // Cabeçalho: Cartão | Data | Cidade | Tipo | Descrição | Parcela | Valor (R$) | QUEM | Data de pagamento
   for (let i = 1; i < sicrediRows.length; i++) {
     const row = sicrediRows[i];
     if (!row || row.length < 5) continue;
@@ -136,7 +137,6 @@ export function parseCardsData(
   }
 
   // 2. Fatura C6
-  // Cabeçalho: Data | Cartão | Descrição da compra / parcela | Valor (R$) | Data de pagamento | Quem paga
   for (let i = 1; i < c6Rows.length; i++) {
     const row = c6Rows[i];
     if (!row || row.length < 4) continue;
@@ -188,7 +188,6 @@ export function parseSalaries(
     const header = rows[0] || [];
     const months: SalaryMonthData[] = [];
 
-    // Linhas chave mapeadas por nome da linha (coluna A)
     const rowMap: Record<string, (string | number | null)[]> = {};
     for (const r of rows) {
       if (!r || !r[0]) continue;
@@ -196,7 +195,6 @@ export function parseSalaries(
       rowMap[key] = r;
     }
 
-    // Colunas de meses (Jan. a Dez.)
     for (let c = 1; c < header.length; c++) {
       const mesName = String(header[c] || '').trim();
       if (!mesName || mesName.length > 5 || mesName.includes('/')) continue;
@@ -224,7 +222,6 @@ export function parseSalaries(
       const auxilioRefeicao = getVal('auxilio refeição') || getVal('aux refeição');
       const liquido = getVal('liquido') || getVal('líquido');
 
-      // Consignados / Empréstimos
       let consignados = 0;
       for (const k of Object.keys(rowMap)) {
         if (k.startsWith('emp')) {
@@ -281,13 +278,12 @@ export function parsePoupanca(rows: (string | number | null)[][]): {
   };
 } {
   const items: SavingsItem[] = [];
-  let totalEmConta = 12263.0; // fallback inicial
+  let totalEmConta = 12263.0;
   let valorCarro = 109900.0;
   let entradaCarro = 45000.0;
   let financiamentoCarro = 64900.0;
   let ipvaCarro = 2544.26;
 
-  // Linha 1 pode ter o "Total em conta R$ 12.263,00"
   if (rows.length > 0 && rows[0].length >= 6) {
     const val = parseCurrency(rows[0][5]);
     if (val > 0) totalEmConta = val;
@@ -326,7 +322,6 @@ export function parsePoupanca(rows: (string | number | null)[][]): {
       isEntrada,
     });
 
-    // Detecta valores de metas nas colunas laterais se existirem
     if (row.length >= 8) {
       const colG = String(row[6] || '').toLowerCase();
       const colH = parseCurrency(row[7]);
@@ -363,19 +358,14 @@ export function calculateMonthSummary(
   salaries: { victorMonths: SalaryMonthData[]; leticiaMonths: SalaryMonthData[] },
   poupancaTotal: number
 ): MonthSummary {
-  // Transações do mês selecionado pelo vencimento
   const monthTx = transactions.filter(t => t.mesPagamento === targetMesAno);
 
-  // Mês numérico
   const [targetMes, targetAno] = targetMesAno.split('/');
   const mesIndex = parseInt(targetMes, 10);
 
-  // Receitas dos salários (com regime de caixa: competência antecipada)
-  // O contracheque correspondente ao mês pode ser obtido pelo índice
   const sV = salaries.victorMonths[mesIndex - 1] || salaries.victorMonths[salaries.victorMonths.length - 1];
   const sL = salaries.leticiaMonths[mesIndex - 1] || salaries.leticiaMonths[salaries.leticiaMonths.length - 1];
 
-  // Procura receitas de salário registradas no próprio Gerenciador para este mês
   const salaryTxV = monthTx.find(t => t.tipo === 'Recebimento' && t.quem === 'VIC' && t.descricao.toLowerCase().includes('subsidio'));
   const salaryTxL = monthTx.find(t => t.tipo === 'Recebimento' && t.quem === 'LE' && t.descricao.toLowerCase().includes('subsidio'));
 
@@ -383,29 +373,56 @@ export function calculateMonthSummary(
   const receitaLeticia = salaryTxL?.valor || sL?.liquido || 4692.89;
   const receitaTotal = receitaVictor + receitaLeticia;
 
-  // Vale-Refeição no dia 20:
-  // Detecta se há lançamento de alimentação dia 20 no Gerenciador
+  // Vale-Refeição dia 20
   const vrTx = monthTx.filter(t => t.tipo === 'Recebimento' && (t.categoria.toLowerCase().includes('aliment') || t.descricao.toLowerCase().includes('vale')));
-  const vrTotal = vrTx.length > 0 ? vrTx.reduce((acc, curr) => acc + curr.valor, 0) : 852.0; // 426 x 2
+  const vrTotal = vrTx.length > 0 ? vrTx.reduce((acc, curr) => acc + curr.valor, 0) : 852.0;
   const vrVictor = 426.0;
   const vrLeticia = vrTotal - vrVictor;
 
-  // Saídas do mês
+  // 1. Visão Conta Real do Victor (o que tem formato "Conta")
+  const itensContaReal = monthTx.filter(t => t.isFormatoConta);
+  const entradasContaVictor = itensContaReal
+    .filter(t => t.tipo === 'Recebimento')
+    .reduce((acc, curr) => acc + curr.valor, 0) || (receitaVictor + vrVictor);
+
+  const saidasContaVictor = itensContaReal
+    .filter(t => t.tipo === 'Saída')
+    .reduce((acc, curr) => acc + curr.valor, 0);
+
+  const saldoContaRealVictor = entradasContaVictor - saidasContaVictor;
+
+  // Transferência de pacote para Letícia ("Contas novembro", "Contas outubro", etc.)
+  const itemTransLeticia = monthTx.find(t => t.isTransferenciaLeticia);
+  const transferenciaLeticia = itemTransLeticia?.valor || 0;
+
+  // 2. Visão Despesas Reais da Família (sem duplicar o pacote de transferência para a Letícia)
   const saidasMonth = monthTx.filter(t => t.tipo === 'Saída');
+  const saidasSemPacote = saidasMonth.filter(t => !t.isTransferenciaLeticia);
+  const despesasReaisFamilia = saidasSemPacote.reduce((acc, curr) => acc + curr.valor, 0);
+
+  // Total de saídas incluindo o pacote (para referência da tabela)
   const saidasTotal = saidasMonth.reduce((acc, curr) => acc + curr.valor, 0);
 
-  const saidasVIC = saidasMonth.filter(t => t.quem === 'VIC').reduce((acc, curr) => acc + curr.valor, 0);
-  const saidasLE = saidasMonth.filter(t => t.quem === 'LE').reduce((acc, curr) => acc + curr.valor, 0);
-  const saidasDIV = saidasMonth.filter(t => t.quem === 'DIV' || t.quem === 'RP' || t.quem === 'OUTROS').reduce((acc, curr) => acc + curr.valor, 0);
+  const saidasVIC = saidasSemPacote.filter(t => t.quem === 'VIC').reduce((acc, curr) => acc + curr.valor, 0);
+  const saidasLE = saidasSemPacote.filter(t => t.quem === 'LE').reduce((acc, curr) => acc + curr.valor, 0);
+  const saidasDIV = saidasSemPacote.filter(t => t.quem === 'DIV' || t.quem === 'RP' || t.quem === 'OUTROS').reduce((acc, curr) => acc + curr.valor, 0);
 
-  // Saldos
-  const saldoComVR = (receitaTotal + vrTotal) - saidasTotal;
-  const saldoSemVR = receitaTotal - saidasTotal;
+  // Saldos consolidados da família
+  const saldoComVR = (receitaTotal + vrTotal) - despesasReaisFamilia;
+  const saldoSemVR = receitaTotal - despesasReaisFamilia;
+
+  // Objeto da Conta Real
+  const contaRealVictor: ContaRealVictorInfo = {
+    entradasTotal: entradasContaVictor,
+    saidasTotal: saidasContaVictor,
+    saldoFinal: saldoContaRealVictor,
+    transferenciaLeticia,
+    subsidio: receitaVictor,
+    valeAlimentacao: vrVictor,
+    itensConta: itensContaReal,
+  };
 
   // Acerto Mensal (Divisão de Despesas e Cartões)
-  // Calcula o que cada um desembolsou diretamente vs o que deve arcar
-  // Na planilha, Victor costuma pagar a conta corrente geral e seus cartões,
-  // enquanto Letícia paga seus próprios cartões e compras
   let gastoDiretoVictor = 0;
   let gastoDiretoLeticia = 0;
 
@@ -413,16 +430,13 @@ export function calculateMonthSummary(
     const descLower = t.descricao.toLowerCase();
     const formatoLower = t.formato.toLowerCase();
 
-    // Se é fatura ou gasto identificado de Letícia
     if (descLower.includes('leh') || descLower.includes('leticia') || formatoLower.includes('leh')) {
       gastoDiretoLeticia += t.valor;
     } else {
-      // Gastos da conta conjunta e do Victor
       gastoDiretoVictor += t.valor;
     }
   }
 
-  // Adiciona gastos de faturas que vencem neste mês
   const currentMonthCards = cards.filter(c => {
     const dInfo = parseDateComponents(c.dataPagamento);
     return dInfo?.mesAno === targetMesAno;
@@ -436,11 +450,9 @@ export function calculateMonthSummary(
     }
   }
 
-  // Cota devida: Próprios + 50% dos compartilhados (DIV)
   const cotaVictor = saidasVIC + (saidasDIV / 2);
   const cotaLeticia = saidasLE + (saidasDIV / 2);
 
-  // Saldo: O que desembolsou menos a sua cota devida
   const saldoVictor = gastoDiretoVictor - cotaVictor;
   const saldoLeticia = gastoDiretoLeticia - cotaLeticia;
 
@@ -451,13 +463,11 @@ export function calculateMonthSummary(
 
   if (Math.abs(saldoVictor) > 0.01) {
     if (saldoVictor > 0) {
-      // Victor pagou mais do que sua cota
       credor = 'Victor';
       devedor = 'Letícia';
       valorTransferencia = saldoVictor;
       explicacao = `Letícia deve transferir ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valorTransferencia)} para Victor fechar as contas do mês.`;
     } else {
-      // Letícia pagou mais do que sua cota
       credor = 'Letícia';
       devedor = 'Victor';
       valorTransferencia = Math.abs(saldoVictor);
@@ -478,8 +488,8 @@ export function calculateMonthSummary(
     explicacao,
   };
 
-  // Linha do tempo dia a dia (Cash Flow)
-  const timelineDays = buildDailyTimeline(targetMesAno, monthTx, receitaTotal);
+  // Linha do tempo dia a dia baseada nos movimentos reais da conta
+  const timelineDays = buildDailyTimeline(targetMesAno, itensContaReal.length > 0 ? itensContaReal : monthTx, receitaVictor);
 
   let hasNegativeBeforeDay20 = false;
   let lowestBalanceBeforeDay20 = Infinity;
@@ -491,7 +501,8 @@ export function calculateMonthSummary(
         lowestBalanceBeforeDay20 = day.saldoAcumulado;
         dayLowestBalance = day.dia;
       }
-      if (day.saldoAcumulado < 0) {
+      // Alerta apenas se a conta real realmente fica negativa com margem de tolerância
+      if (day.saldoAcumulado < -50) {
         hasNegativeBeforeDay20 = true;
       }
     }
@@ -523,6 +534,9 @@ export function calculateMonthSummary(
     hasNegativeBeforeDay20,
     lowestBalanceBeforeDay20: lowestBalanceBeforeDay20 === Infinity ? 0 : lowestBalanceBeforeDay20,
     dayLowestBalance,
+    contaRealVictor,
+    despesasReaisFamilia,
+    saldoConsolidadoFamilia: saldoComVR,
   };
 }
 
@@ -540,14 +554,12 @@ function buildDailyTimeline(
     daysMap[d] = { entradas: 0, saidas: 0, itens: [] };
   }
 
-  // O salário recebido no dia 01 (proveniente do fim do mês anterior) inicia o caixa
   daysMap[1].entradas += salarioInicialRecebido;
 
   for (const tx of transactions) {
     const dia = tx.diaVencimento || 1;
     if (dia >= 1 && dia <= 31) {
       if (tx.tipo === 'Recebimento') {
-        // Evita duplicar se for o salário já computado no dia 01
         if (!tx.descricao.toLowerCase().includes('subsidio')) {
           daysMap[dia].entradas += tx.valor;
         }
@@ -563,13 +575,11 @@ function buildDailyTimeline(
 
   for (let d = 1; d <= 31; d++) {
     const info = daysMap[d];
-    // Se o dia não tem movimentação e não é um dia marco (1, 5, 10, 15, 20), pula apenas se quiser enxugar
-    // Mas para o gráfico dia a dia contínuo, mantemos a evolução do saldo
     const saldoDia = info.entradas - info.saidas;
     saldoAcumulado += saldoDia;
 
     const dataStr = `${String(d).padStart(2, '0')}/${mesAno}`;
-    const temAlertaNegativo = d < 20 && saldoAcumulado < 0;
+    const temAlertaNegativo = d < 20 && saldoAcumulado < -50;
 
     result.push({
       dia: d,
@@ -591,11 +601,7 @@ function buildDailyTimeline(
  */
 export function calculateFutureReleases(cards: CardTransaction[]): FutureInstallmentRelease[] {
   const futureMonths: FutureInstallmentRelease[] = [];
-
-  // Mapeia parcelas com número de parcelas restantes
   const installmentTx = cards.filter(c => c.totalParcelas && c.totalParcelas > 1);
-
-  // Projeção para os próximos 6 meses
   const baseDate = new Date();
   
   for (let m = 1; m <= 6; m++) {
@@ -659,16 +665,12 @@ export function simulateSalary(
       sim.diarias = params.valorDiarias;
     }
 
-    // Recalcula totais
     sim.totalVantagens = sim.subsidio + sim.substituicao + sim.ferias + sim.horasExtras + sim.diarias;
-    
-    // Estimativa de descontos legais com a substituição (IPE 14% + IRRF ~27.5%)
     const aumentoBruto = sim.substituicao - baseSalary.substituicao;
     const aumentoDescontos = aumentoBruto > 0 ? aumentoBruto * 0.35 : 0;
     sim.totalDescontos = baseSalary.totalDescontos + aumentoDescontos;
     sim.liquido = Math.max(0, sim.totalVantagens - sim.totalDescontos);
   } else {
-    // Letícia
     if (params.adicionarHEleticia && params.horasExtrasLeticiaQtd > 0) {
       const valorHora = params.valorHoraExtraLeticia || 46.37;
       const valorTotalHE = params.horasExtrasLeticiaQtd * valorHora;

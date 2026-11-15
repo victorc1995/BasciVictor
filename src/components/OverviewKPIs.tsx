@@ -13,6 +13,10 @@ import {
   CheckCircle2,
   Users,
   AlertTriangle,
+  Building2,
+  Send,
+  CreditCard,
+  CheckCircle,
 } from 'lucide-react';
 
 interface OverviewKPIsProps {
@@ -38,11 +42,109 @@ export const OverviewKPIs: React.FC<OverviewKPIsProps> = ({ summary }) => {
     hasNegativeBeforeDay20,
     lowestBalanceBeforeDay20,
     dayLowestBalance,
+    contaRealVictor,
+    despesasReaisFamilia,
   } = summary;
 
   return (
     <div className="space-y-6">
-      {/* Alerta de Caixa Crítico se houver risco antes do dia 20 */}
+      {/* CARD DE DESTAQUE: MINHA CONTA BANCÁRIA REAL (VICTOR - FORMATO "CONTA") */}
+      <div className="bg-gradient-to-r from-slate-900 via-slate-850 to-slate-900 rounded-2xl p-6 border-2 border-blue-500/40 shadow-2xl relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
+
+        <div className="flex flex-col md:flex-row md:items-center justify-between pb-4 border-b border-slate-700/60 gap-4">
+          <div className="flex items-center space-x-3">
+            <div className="w-12 h-12 rounded-2xl bg-blue-600/20 border border-blue-500/40 flex items-center justify-center text-blue-400 shadow-inner">
+              <Building2 className="w-6 h-6" />
+            </div>
+            <div>
+              <div className="flex items-center space-x-2">
+                <h3 className="text-lg font-bold text-white tracking-tight">
+                  Minha Conta Bancária Real (Victor)
+                </h3>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-500/20 text-blue-300 border border-blue-500/30">
+                  Formato "Conta"
+                </span>
+              </div>
+              <p className="text-xs text-slate-400">
+                Movimentação líquida real da sua conta corrente no mês
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center space-x-4 bg-slate-950/60 px-4 py-2.5 rounded-xl border border-slate-700/70">
+            <div className="text-right">
+              <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">
+                Saldo Líquido da Conta
+              </span>
+              <span
+                className={`text-2xl font-black ${
+                  contaRealVictor.saldoFinal >= 0 ? 'text-emerald-400' : 'text-rose-400'
+                }`}
+              >
+                {formatCurrency(contaRealVictor.saldoFinal)}
+              </span>
+            </div>
+            <div className="w-8 h-8 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-400">
+              <CheckCircle className="w-5 h-5" />
+            </div>
+          </div>
+        </div>
+
+        {/* Detalhamento da Conta Real do Victor */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-5">
+          {/* Entradas */}
+          <div className="bg-slate-950/50 p-4 rounded-xl border border-slate-800">
+            <div className="flex items-center justify-between text-xs text-slate-400 mb-2">
+              <span className="font-semibold text-slate-300">Entradas na Conta</span>
+              <span className="text-emerald-400 font-bold">
+                +{formatCurrency(contaRealVictor.entradasTotal)}
+              </span>
+            </div>
+            <div className="space-y-1 text-xs text-slate-400">
+              <div className="flex justify-between">
+                <span>Subsídio:</span>
+                <span className="text-slate-200">{formatCurrency(contaRealVictor.subsidio)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Vale-Refeição (Dia 20):</span>
+                <span className="text-slate-200">{formatCurrency(contaRealVictor.valeAlimentacao)}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Transferência para Letícia (Pacote de Contas) */}
+          <div className="bg-blue-950/30 p-4 rounded-xl border border-blue-500/30">
+            <div className="flex items-center justify-between text-xs text-blue-300 mb-2">
+              <span className="font-bold flex items-center space-x-1">
+                <Send className="w-3.5 h-3.5" />
+                <span>Transferido p/ Letícia</span>
+              </span>
+              <span className="text-white font-bold">
+                -{formatCurrency(contaRealVictor.transferenciaLeticia)}
+              </span>
+            </div>
+            <p className="text-[11px] text-blue-200/80 leading-relaxed">
+              Valor transferido para a conta da Letícia para pagar as contas da casa (luz, água, carro, aluguel e faturas).
+            </p>
+          </div>
+
+          {/* Outros Débitos em Conta */}
+          <div className="bg-slate-950/50 p-4 rounded-xl border border-slate-800">
+            <div className="flex items-center justify-between text-xs text-slate-400 mb-2">
+              <span className="font-semibold text-slate-300">Outros Débitos Diretos</span>
+              <span className="text-rose-300 font-bold">
+                -{formatCurrency(contaRealVictor.saidasTotal - contaRealVictor.transferenciaLeticia)}
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-400 leading-relaxed">
+              Fatura C6 débito em conta, reenquadramento e tarifas debitadas diretamente da sua conta.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Alerta de Caixa Crítico se houver risco real antes do dia 20 */}
       {hasNegativeBeforeDay20 && (
         <div className="rounded-2xl p-4 bg-rose-500/10 border border-rose-500/30 flex items-start space-x-3 text-rose-300 animate-fadeIn">
           <AlertTriangle className="w-5 h-5 text-rose-400 mt-0.5 shrink-0" />
@@ -50,19 +152,18 @@ export const OverviewKPIs: React.FC<OverviewKPIsProps> = ({ summary }) => {
             <span className="font-bold text-rose-200">Atenção ao Fluxo de Caixa da 1ª Quinzena: </span>
             A projeção indica que a conta atingirá saldo negativo de{' '}
             <strong className="text-white underline">{formatCurrency(lowestBalanceBeforeDay20)}</strong> no dia{' '}
-            {dayLowestBalance} do mês, antes do reforço do Vale-Refeição no dia 20. Planeje os pagamentos para
-            evitar encargos.
+            {dayLowestBalance} do mês, antes do reforço do Vale-Refeição no dia 20.
           </div>
         </div>
       )}
 
-      {/* Grid Principal de 4 Cards de KPIs */}
+      {/* Grid de 4 Cards: Visão Consolidada Familiar (Sem Duplicidade) */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Card 1: Receita Líquida Real */}
+        {/* Card 1: Receita Familiar Real */}
         <div className="bg-slate-800/80 rounded-2xl p-5 border border-slate-700/80 shadow-lg relative overflow-hidden group hover:border-blue-500/50 transition">
           <div className="flex items-center justify-between">
             <span className="text-xs font-medium text-slate-400 uppercase tracking-wider">
-              Receita Líquida Real
+              Receita Familiar Real
             </span>
             <div className="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center text-emerald-400">
               <TrendingUp className="w-4 h-4" />
@@ -83,36 +184,38 @@ export const OverviewKPIs: React.FC<OverviewKPIsProps> = ({ summary }) => {
           </div>
         </div>
 
-        {/* Card 2: Total de Saídas Comprometidas */}
+        {/* Card 2: Despesas Reais da Casa (Sem duplicar o pacote de transferência) */}
         <div className="bg-slate-800/80 rounded-2xl p-5 border border-slate-700/80 shadow-lg relative overflow-hidden group hover:border-rose-500/50 transition">
           <div className="flex items-center justify-between">
             <span className="text-xs font-medium text-slate-400 uppercase tracking-wider">
-              Saídas Comprometidas
+              Despesas da Casa
             </span>
             <div className="w-8 h-8 rounded-lg bg-rose-500/10 flex items-center justify-center text-rose-400">
               <TrendingDown className="w-4 h-4" />
             </div>
           </div>
           <div className="mt-3">
-            <div className="text-2xl font-bold text-white tracking-tight">{formatCurrency(saidasTotal)}</div>
-            <div className="mt-2 text-xs text-slate-400 flex flex-col space-y-0.5 border-t border-slate-700/50 pt-2">
+            <div className="text-2xl font-bold text-white tracking-tight">
+              {formatCurrency(despesasReaisFamilia || saidasTotal)}
+            </div>
+            <div className="mt-2 text-[11px] text-slate-400 flex flex-col space-y-0.5 border-t border-slate-700/50 pt-2">
               <div className="flex justify-between">
                 <span>VIC: {formatCurrency(saidasVIC)}</span>
                 <span>LE: {formatCurrency(saidasLE)}</span>
               </div>
-              <div className="flex justify-between text-blue-300">
+              <div className="flex justify-between text-blue-300 font-medium">
                 <span>Compartilhado (DIV):</span>
-                <span className="font-medium">{formatCurrency(saidasDIV)}</span>
+                <span>{formatCurrency(saidasDIV)}</span>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Card 3: Saldo Líquido do Mês (Com e Sem VR) */}
+        {/* Card 3: Saldo Líquido Familiar */}
         <div className="bg-slate-800/80 rounded-2xl p-5 border border-slate-700/80 shadow-lg relative overflow-hidden group hover:border-indigo-500/50 transition">
           <div className="flex items-center justify-between">
             <span className="text-xs font-medium text-slate-400 uppercase tracking-wider">
-              Saldo Líquido Mensal
+              Saldo Líquido Familiar
             </span>
             <div className="w-8 h-8 rounded-lg bg-indigo-500/10 flex items-center justify-center text-indigo-400">
               <Utensils className="w-4 h-4" />
