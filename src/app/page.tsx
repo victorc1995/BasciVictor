@@ -148,13 +148,68 @@ export default function DashboardPage() {
         const parsed = JSON.parse(saved);
         if (parsed.contasCasa) {
           // Remove contas com categoria "Fatura Cartão" de contasCasa para nunca duplicar com as faturas de comprasCartao
-          let semFaturasDuplicadas = parsed.contasCasa.filter(
+          let contas = parsed.contasCasa.filter(
             (c: any) => c.categoria !== "Fatura Cartão"
           );
+
+          // Separação de Aluguel e IPTU conforme solicitação:
+          // Aluguel: 1329.00 (vencimento dia 05)
+          // IPTU: 115.35 (parc 9 de 10 em Nov, 10 de 10 em Dez) (vencimento dia 05)
+          const temAluguelIptuJunto = contas.some(
+            (c: any) =>
+              c.descricao.toLowerCase().includes("aluguel + iptu") ||
+              (c.id === "c1" && c.valor === 1444.35)
+          );
+          if (temAluguelIptuJunto) {
+            contas = contas.filter(
+              (c: any) =>
+                !c.descricao.toLowerCase().includes("aluguel + iptu") && c.id !== "c1"
+            );
+            contas.push(
+              { id: "c-nov-aluguel", mesAno: "2026-11", descricao: "Aluguel Residencial", categoria: "Aluguel", valor: 1329.00, vencimento: "2026-11-05", quemPaga: "DIV", pago: true, status: "CONFIRMADO", recorrente: true },
+              { id: "c-nov-iptu", mesAno: "2026-11", descricao: "IPTU (9/10)", categoria: "Outros", valor: 115.35, vencimento: "2026-11-05", quemPaga: "DIV", pago: true, status: "CONFIRMADO", recorrente: true, parcelada: true, parcelaAtual: 9, totalParcelas: 10 }
+            );
+          }
+
+          // Atualiza Aluguel de Dezembro e meses seguintes para 1329.00 com vencimento dia 05
+          contas = contas.map((c: any) => {
+            if (c.categoria === "Aluguel" && (c.valor === 1450 || c.valor === 1444.35 || c.descricao.toLowerCase().includes("aluguel"))) {
+              return {
+                ...c,
+                descricao: "Aluguel Residencial",
+                valor: 1329.00,
+                vencimento: `${c.mesAno}-05`,
+              };
+            }
+            return c;
+          });
+
+          // Garante IPTU 10/10 em Dezembro/2026
+          const temIptuDez = contas.some(
+            (c: any) => c.mesAno === "2026-12" && c.descricao.toLowerCase().includes("iptu")
+          );
+          if (!temIptuDez) {
+            contas.push({
+              id: "c-dez-iptu",
+              mesAno: "2026-12",
+              descricao: "IPTU (10/10)",
+              categoria: "Outros",
+              valor: 115.35,
+              vencimento: "2026-12-05",
+              quemPaga: "DIV",
+              pago: false,
+              status: "PREVISTO",
+              recorrente: true,
+              parcelada: true,
+              parcelaAtual: 10,
+              totalParcelas: 10,
+            });
+          }
+
           // Garante que meses futuros da projeção de 6 meses (ex: Fev, Mar, Abr 2027) estejam presentes
-          const mesesExistentes = new Set(semFaturasDuplicadas.map((c: any) => c.mesAno));
+          const mesesExistentes = new Set(contas.map((c: any) => c.mesAno));
           const novosMeses = INITIAL_CONTAS_CASA.filter((c) => !mesesExistentes.has(c.mesAno));
-          setContasCasa([...semFaturasDuplicadas, ...novosMeses]);
+          setContasCasa([...contas, ...novosMeses]);
         }
         if (parsed.poupanca) {
           const limpos = parsed.poupanca.map((p: any) => ({

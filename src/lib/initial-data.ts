@@ -39,7 +39,8 @@ export const INITIAL_CONTAS_CASA: ContaCasa[] = [
   // ==========================================
   // NOVEMBRO / 2026
   // ==========================================
-  { id: "c1", mesAno: "2026-11", descricao: "Aluguel + IPTU", categoria: "Aluguel", valor: 1444.35, vencimento: "2026-11-05", quemPaga: "DIV", pago: true, status: "CONFIRMADO", recorrente: true },
+  { id: "c-nov-aluguel", mesAno: "2026-11", descricao: "Aluguel Residencial", categoria: "Aluguel", valor: 1329.00, vencimento: "2026-11-05", quemPaga: "DIV", pago: true, status: "CONFIRMADO", recorrente: true },
+  { id: "c-nov-iptu", mesAno: "2026-11", descricao: "IPTU (9/10)", categoria: "Outros", valor: 115.35, vencimento: "2026-11-05", quemPaga: "DIV", pago: true, status: "CONFIRMADO", recorrente: true, parcelada: true, parcelaAtual: 9, totalParcelas: 10 },
   { id: "c2", mesAno: "2026-11", descricao: "Internet Residencial (Vero)", categoria: "Internet", valor: 135.69, vencimento: "2026-11-15", quemPaga: "DIV", pago: false, status: "CONFIRMADO", recorrente: true },
   { id: "c3", mesAno: "2026-11", descricao: "Energia Elétrica (CEEE Luz)", categoria: "Luz", valor: 301.18, vencimento: "2026-11-20", quemPaga: "DIV", pago: false, status: "CONFIRMADO", recorrente: true },
   { id: "c4", mesAno: "2026-11", descricao: "Água / Saneamento (Corsan)", categoria: "Água", valor: 90.00, vencimento: "2026-11-20", quemPaga: "DIV", pago: false, status: "CONFIRMADO", recorrente: true },
@@ -50,7 +51,8 @@ export const INITIAL_CONTAS_CASA: ContaCasa[] = [
   // ==========================================
   // DEZEMBRO / 2026 (Novas Contas Fixas em Vigor)
   // ==========================================
-  { id: "c-dez-aluguel", mesAno: "2026-12", descricao: "Aluguel Residencial", categoria: "Aluguel", valor: 1450.00, vencimento: "2026-12-02", quemPaga: "DIV", pago: false, status: "PREVISTO", recorrente: true },
+  { id: "c-dez-aluguel", mesAno: "2026-12", descricao: "Aluguel Residencial", categoria: "Aluguel", valor: 1329.00, vencimento: "2026-12-05", quemPaga: "DIV", pago: false, status: "PREVISTO", recorrente: true },
+  { id: "c-dez-iptu", mesAno: "2026-12", descricao: "IPTU (10/10)", categoria: "Outros", valor: 115.35, vencimento: "2026-12-05", quemPaga: "DIV", pago: false, status: "PREVISTO", recorrente: true, parcelada: true, parcelaAtual: 10, totalParcelas: 10 },
   { id: "c-dez-agua", mesAno: "2026-12", descricao: "Água / Saneamento (Corsan)", categoria: "Água", valor: 120.00, vencimento: "2026-12-20", quemPaga: "DIV", pago: false, status: "PREVISTO", recorrente: true },
   { id: "c-dez-internet", mesAno: "2026-12", descricao: "Internet Residencial (Vero)", categoria: "Internet", valor: 135.00, vencimento: "2026-12-15", quemPaga: "DIV", pago: false, status: "PREVISTO", recorrente: true },
   { id: "c-dez-luz", mesAno: "2026-12", descricao: "Energia Elétrica (Luz)", categoria: "Luz", valor: 350.00, vencimento: "2026-12-20", quemPaga: "DIV", pago: false, status: "PREVISTO", recorrente: true },
@@ -60,7 +62,7 @@ export const INITIAL_CONTAS_CASA: ContaCasa[] = [
   // ==========================================
   // JANEIRO / 2027 (Entrada do Carro R$ 1.750 em 12/01/2027)
   // ==========================================
-  { id: "c-jan-aluguel", mesAno: "2027-01", descricao: "Aluguel Residencial", categoria: "Aluguel", valor: 1450.00, vencimento: "2027-01-02", quemPaga: "DIV", pago: false, status: "PREVISTO", recorrente: true },
+  { id: "c-jan-aluguel", mesAno: "2027-01", descricao: "Aluguel Residencial", categoria: "Aluguel", valor: 1329.00, vencimento: "2027-01-05", quemPaga: "DIV", pago: false, status: "PREVISTO", recorrente: true },
   { id: "c-jan-carro", mesAno: "2027-01", descricao: "Parcela do Carro", categoria: "Carro", valor: 1750.00, vencimento: "2027-01-12", quemPaga: "DIV", pago: false, status: "PREVISTO", recorrente: true },
   { id: "c-jan-agua", mesAno: "2027-01", descricao: "Água / Saneamento (Corsan)", categoria: "Água", valor: 120.00, vencimento: "2027-01-20", quemPaga: "DIV", pago: false, status: "PREVISTO", recorrente: true },
   { id: "c-jan-internet", mesAno: "2027-01", descricao: "Internet Residencial (Vero)", categoria: "Internet", valor: 135.00, vencimento: "2027-01-15", quemPaga: "DIV", pago: false, status: "PREVISTO", recorrente: true },
@@ -71,7 +73,7 @@ export const INITIAL_CONTAS_CASA: ContaCasa[] = [
   // ==========================================
   // FEVEREIRO / 2027
   // ==========================================
-  { id: "c-fev-aluguel", mesAno: "2027-02", descricao: "Aluguel Residencial", categoria: "Aluguel", valor: 1450.00, vencimento: "2027-02-02", quemPaga: "DIV", pago: false, status: "PREVISTO", recorrente: true },
+  { id: "c-fev-aluguel", mesAno: "2027-02", descricao: "Aluguel Residencial", categoria: "Aluguel", valor: 1329.00, vencimento: "2027-02-05", quemPaga: "DIV", pago: false, status: "PREVISTO", recorrente: true },
   { id: "c-fev-carro", mesAno: "2027-02", descricao: "Parcela do Carro", categoria: "Carro", valor: 1750.00, vencimento: "2027-02-12", quemPaga: "DIV", pago: false, status: "PREVISTO", recorrente: true },
   { id: "c-fev-agua", mesAno: "2027-02", descricao: "Água / Saneamento (Corsan)", categoria: "Água", valor: 120.00, vencimento: "2027-02-20", quemPaga: "DIV", pago: false, status: "PREVISTO", recorrente: true },
   { id: "c-fev-internet", mesAno: "2027-02", descricao: "Internet Residencial (Vero)", categoria: "Internet", valor: 135.00, vencimento: "2027-02-15", quemPaga: "DIV", pago: false, status: "PREVISTO", recorrente: true },
@@ -82,7 +84,7 @@ export const INITIAL_CONTAS_CASA: ContaCasa[] = [
   // ==========================================
   // MARÇO / 2027
   // ==========================================
-  { id: "c-mar-aluguel", mesAno: "2027-03", descricao: "Aluguel Residencial", categoria: "Aluguel", valor: 1450.00, vencimento: "2027-03-02", quemPaga: "DIV", pago: false, status: "PREVISTO", recorrente: true },
+  { id: "c-mar-aluguel", mesAno: "2027-03", descricao: "Aluguel Residencial", categoria: "Aluguel", valor: 1329.00, vencimento: "2027-03-05", quemPaga: "DIV", pago: false, status: "PREVISTO", recorrente: true },
   { id: "c-mar-carro", mesAno: "2027-03", descricao: "Parcela do Carro", categoria: "Carro", valor: 1750.00, vencimento: "2027-03-12", quemPaga: "DIV", pago: false, status: "PREVISTO", recorrente: true },
   { id: "c-mar-agua", mesAno: "2027-03", descricao: "Água / Saneamento (Corsan)", categoria: "Água", valor: 120.00, vencimento: "2027-03-20", quemPaga: "DIV", pago: false, status: "PREVISTO", recorrente: true },
   { id: "c-mar-internet", mesAno: "2027-03", descricao: "Internet Residencial (Vero)", categoria: "Internet", valor: 135.00, vencimento: "2027-03-15", quemPaga: "DIV", pago: false, status: "PREVISTO", recorrente: true },
@@ -93,7 +95,7 @@ export const INITIAL_CONTAS_CASA: ContaCasa[] = [
   // ==========================================
   // ABRIL / 2027
   // ==========================================
-  { id: "c-abr-aluguel", mesAno: "2027-04", descricao: "Aluguel Residencial", categoria: "Aluguel", valor: 1450.00, vencimento: "2027-04-02", quemPaga: "DIV", pago: false, status: "PREVISTO", recorrente: true },
+  { id: "c-abr-aluguel", mesAno: "2027-04", descricao: "Aluguel Residencial", categoria: "Aluguel", valor: 1329.00, vencimento: "2027-04-05", quemPaga: "DIV", pago: false, status: "PREVISTO", recorrente: true },
   { id: "c-abr-carro", mesAno: "2027-04", descricao: "Parcela do Carro", categoria: "Carro", valor: 1750.00, vencimento: "2027-04-12", quemPaga: "DIV", pago: false, status: "PREVISTO", recorrente: true },
   { id: "c-abr-agua", mesAno: "2027-04", descricao: "Água / Saneamento (Corsan)", categoria: "Água", valor: 120.00, vencimento: "2027-04-20", quemPaga: "DIV", pago: false, status: "PREVISTO", recorrente: true },
   { id: "c-abr-internet", mesAno: "2027-04", descricao: "Internet Residencial (Vero)", categoria: "Internet", valor: 135.00, vencimento: "2027-04-15", quemPaga: "DIV", pago: false, status: "PREVISTO", recorrente: true },

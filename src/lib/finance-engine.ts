@@ -293,7 +293,8 @@ function parseParcela(info?: string): { atual: number; total: number } | null {
 export function obterContasFixasPadraoMes(mesAlvo: string): ContaCasa[] {
   if (mesAlvo < "2026-12") {
     return [
-      { id: `padrao-aluguel-${mesAlvo}`, mesAno: mesAlvo, descricao: "Aluguel + IPTU", categoria: "Aluguel", valor: 1444.35, vencimento: `${mesAlvo}-05`, quemPaga: "DIV", pago: false, status: "CONFIRMADO", recorrente: true },
+      { id: `padrao-aluguel-${mesAlvo}`, mesAno: mesAlvo, descricao: "Aluguel Residencial", categoria: "Aluguel", valor: 1329.00, vencimento: `${mesAlvo}-05`, quemPaga: "DIV", pago: false, status: "CONFIRMADO", recorrente: true },
+      { id: `padrao-iptu-${mesAlvo}`, mesAno: mesAlvo, descricao: "IPTU (9/10)", categoria: "Outros", valor: 115.35, vencimento: `${mesAlvo}-05`, quemPaga: "DIV", pago: false, status: "CONFIRMADO", recorrente: true, parcelada: true, parcelaAtual: 9, totalParcelas: 10 },
       { id: `padrao-internet-${mesAlvo}`, mesAno: mesAlvo, descricao: "Internet Residencial (Vero)", categoria: "Internet", valor: 135.69, vencimento: `${mesAlvo}-15`, quemPaga: "DIV", pago: false, status: "CONFIRMADO", recorrente: true },
       { id: `padrao-luz-${mesAlvo}`, mesAno: mesAlvo, descricao: "Energia Elétrica (CEEE Luz)", categoria: "Luz", valor: 301.18, vencimento: `${mesAlvo}-20`, quemPaga: "DIV", pago: false, status: "CONFIRMADO", recorrente: true },
       { id: `padrao-agua-${mesAlvo}`, mesAno: mesAlvo, descricao: "Água / Saneamento (Corsan)", categoria: "Água", valor: 90.00, vencimento: `${mesAlvo}-20`, quemPaga: "DIV", pago: false, status: "CONFIRMADO", recorrente: true },
@@ -303,18 +304,38 @@ export function obterContasFixasPadraoMes(mesAlvo: string): ContaCasa[] {
   }
 
   // A partir de Dezembro/2026:
-  // Aluguel R$ 1.450,00 (vencimento dia 02)
+  // Aluguel R$ 1.329,00 (vencimento dia 05)
+  // IPTU R$ 115,35 (em Dezembro é a parcela 10/10)
   // Água R$ 120,00 (vencimento dia 20)
   // Internet Residencial R$ 135,00 (vencimento dia 15)
   // Luz R$ 350,00 (vencimento dia 20)
   // Telefone Celular R$ 64,00 (vencimento dia 10 - Victor)
   const contas: ContaCasa[] = [
-    { id: `padrao-aluguel-${mesAlvo}`, mesAno: mesAlvo, descricao: "Aluguel Residencial", categoria: "Aluguel", valor: 1450.00, vencimento: `${mesAlvo}-02`, quemPaga: "DIV", pago: false, status: "PREVISTO", recorrente: true },
+    { id: `padrao-aluguel-${mesAlvo}`, mesAno: mesAlvo, descricao: "Aluguel Residencial", categoria: "Aluguel", valor: 1329.00, vencimento: `${mesAlvo}-05`, quemPaga: "DIV", pago: false, status: "PREVISTO", recorrente: true },
     { id: `padrao-agua-${mesAlvo}`, mesAno: mesAlvo, descricao: "Água / Saneamento (Corsan)", categoria: "Água", valor: 120.00, vencimento: `${mesAlvo}-20`, quemPaga: "DIV", pago: false, status: "PREVISTO", recorrente: true },
     { id: `padrao-internet-${mesAlvo}`, mesAno: mesAlvo, descricao: "Internet Residencial (Vero)", categoria: "Internet", valor: 135.00, vencimento: `${mesAlvo}-15`, quemPaga: "DIV", pago: false, status: "PREVISTO", recorrente: true },
     { id: `padrao-luz-${mesAlvo}`, mesAno: mesAlvo, descricao: "Energia Elétrica (Luz)", categoria: "Luz", valor: 350.00, vencimento: `${mesAlvo}-20`, quemPaga: "DIV", pago: false, status: "PREVISTO", recorrente: true },
     { id: `padrao-tel-${mesAlvo}`, mesAno: mesAlvo, descricao: "Telefone Celular Vivo", categoria: "Telefone", valor: 64.00, vencimento: `${mesAlvo}-10`, quemPaga: "VIC", pago: false, status: "PREVISTO", recorrente: true },
   ];
+
+  // Em Dezembro/2026 adiciona IPTU parcela 10/10 (última parcela)
+  if (mesAlvo === "2026-12") {
+    contas.splice(1, 0, {
+      id: `padrao-iptu-${mesAlvo}`,
+      mesAno: mesAlvo,
+      descricao: "IPTU (10/10)",
+      categoria: "Outros",
+      valor: 115.35,
+      vencimento: `${mesAlvo}-05`,
+      quemPaga: "DIV",
+      pago: false,
+      status: "PREVISTO",
+      recorrente: true,
+      parcelada: true,
+      parcelaAtual: 10,
+      totalParcelas: 10,
+    });
+  }
 
   // A partir de 12/01/2027: Parcela do Carro R$ 1.750,00 (vencimento dia 12)
   if (mesAlvo >= "2027-01") {
