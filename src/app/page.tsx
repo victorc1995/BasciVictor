@@ -1430,7 +1430,7 @@ export default function DashboardPage() {
         )}
 
         {/* ========================================================= */}
-        {/* ABA 3: SALÁRIOS (VICTOR ROQUE & LETÍCIA RIBEIRO)          */}
+        {/* ABA 3: SALÁRIOS (VICTOR ROQUE & LETÍCIA ROQUE)            */}
         {/* ========================================================= */}
         {aba === "salarios" && (
           <div className="space-y-6">
@@ -1443,7 +1443,7 @@ export default function DashboardPage() {
                   </span>
                 </div>
                 <p className="text-xs text-slate-400 mt-1">
-                  Victor Roque • Letícia Ribeiro. Simule as regras salariais, adicione rendimentos extras e confirme com o contracheque oficial do mês.
+                  Victor Roque • Letícia Roque. Simule as regras salariais, adicione rendimentos extras e confirme com o contracheque oficial do mês.
                 </p>
               </div>
 
@@ -1458,7 +1458,7 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            {/* Divisão da tela: Victor Roque & Letícia Ribeiro */}
+            {/* Divisão da tela: Victor Roque & Letícia Roque */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
               {/* Victor Roque */}
               <SalarioCard
@@ -1477,9 +1477,9 @@ export default function DashboardPage() {
                 onRemoverExtra={removerExtraVictor}
               />
 
-              {/* Letícia Ribeiro */}
+              {/* Letícia Roque */}
               <SalarioCard
-                titulo="Letícia Ribeiro"
+                titulo="Letícia Roque"
                 cor="purple"
                 params={salLeticia}
                 onChange={setSalLeticia}
@@ -2194,14 +2194,14 @@ export default function DashboardPage() {
             {/* ========================================================= */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
               {/* ======================================================= */}
-              {/* LADO ESQUERDO: VICTOR ROQUE (CBMRS)                      */}
+              {/* VICTOR ROQUE                                             */}
               {/* ======================================================= */}
               <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
                 <div className="bg-blue-600 text-white px-6 py-4 flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <ShieldCheck className="w-5 h-5 text-blue-200" />
                     <div>
-                      <h3 className="font-bold text-base">Victor Roque — Sd CBMRS</h3>
+                      <h3 className="font-bold text-base">Victor Roque</h3>
                       <p className="text-[11px] text-blue-100">Análise Financeira Individual</p>
                     </div>
                   </div>
@@ -2354,14 +2354,14 @@ export default function DashboardPage() {
               </div>
 
               {/* ======================================================= */}
-              {/* LADO DIREITO: LETÍCIA RIBEIRO (BMRS)                     */}
+              {/* LETÍCIA ROQUE                                            */}
               {/* ======================================================= */}
               <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
                 <div className="bg-purple-600 text-white px-6 py-4 flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <ShieldCheck className="w-5 h-5 text-purple-200" />
                     <div>
-                      <h3 className="font-bold text-base">Letícia Ribeiro — Sd BMRS</h3>
+                      <h3 className="font-bold text-base">Letícia Roque</h3>
                       <p className="text-[11px] text-purple-100">Análise Financeira Individual</p>
                     </div>
                   </div>
