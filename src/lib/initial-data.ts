@@ -67,6 +67,39 @@ export const INITIAL_CONTAS_CASA: ContaCasa[] = [
   { id: "c-jan-luz", mesAno: "2027-01", descricao: "Energia Elétrica (Luz)", categoria: "Luz", valor: 350.00, vencimento: "2027-01-20", quemPaga: "DIV", pago: false, status: "PREVISTO", recorrente: true },
   { id: "c-jan-tel", mesAno: "2027-01", descricao: "Telefone Celular Vivo", categoria: "Telefone", valor: 64.00, vencimento: "2027-01-10", quemPaga: "VIC", pago: false, status: "PREVISTO", recorrente: true },
   { id: "c-acordo-nubank-jan", mesAno: "2027-01", descricao: "Acordo Nubank (7/25)", categoria: "Outros", valor: 124.31, vencimento: "2027-01-02", quemPaga: "VIC", pago: false, status: "PREVISTO", recorrente: true, parcelada: true, parcelaAtual: 7, totalParcelas: 25 },
+
+  // ==========================================
+  // FEVEREIRO / 2027
+  // ==========================================
+  { id: "c-fev-aluguel", mesAno: "2027-02", descricao: "Aluguel Residencial", categoria: "Aluguel", valor: 1450.00, vencimento: "2027-02-02", quemPaga: "DIV", pago: false, status: "PREVISTO", recorrente: true },
+  { id: "c-fev-carro", mesAno: "2027-02", descricao: "Parcela do Carro", categoria: "Carro", valor: 1750.00, vencimento: "2027-02-12", quemPaga: "DIV", pago: false, status: "PREVISTO", recorrente: true },
+  { id: "c-fev-agua", mesAno: "2027-02", descricao: "Água / Saneamento (Corsan)", categoria: "Água", valor: 120.00, vencimento: "2027-02-20", quemPaga: "DIV", pago: false, status: "PREVISTO", recorrente: true },
+  { id: "c-fev-internet", mesAno: "2027-02", descricao: "Internet Residencial (Vero)", categoria: "Internet", valor: 135.00, vencimento: "2027-02-15", quemPaga: "DIV", pago: false, status: "PREVISTO", recorrente: true },
+  { id: "c-fev-luz", mesAno: "2027-02", descricao: "Energia Elétrica (Luz)", categoria: "Luz", valor: 350.00, vencimento: "2027-02-20", quemPaga: "DIV", pago: false, status: "PREVISTO", recorrente: true },
+  { id: "c-fev-tel", mesAno: "2027-02", descricao: "Telefone Celular Vivo", categoria: "Telefone", valor: 64.00, vencimento: "2027-02-10", quemPaga: "VIC", pago: false, status: "PREVISTO", recorrente: true },
+  { id: "c-acordo-nubank-fev", mesAno: "2027-02", descricao: "Acordo Nubank (8/25)", categoria: "Outros", valor: 124.31, vencimento: "2027-02-02", quemPaga: "VIC", pago: false, status: "PREVISTO", recorrente: true, parcelada: true, parcelaAtual: 8, totalParcelas: 25 },
+
+  // ==========================================
+  // MARÇO / 2027
+  // ==========================================
+  { id: "c-mar-aluguel", mesAno: "2027-03", descricao: "Aluguel Residencial", categoria: "Aluguel", valor: 1450.00, vencimento: "2027-03-02", quemPaga: "DIV", pago: false, status: "PREVISTO", recorrente: true },
+  { id: "c-mar-carro", mesAno: "2027-03", descricao: "Parcela do Carro", categoria: "Carro", valor: 1750.00, vencimento: "2027-03-12", quemPaga: "DIV", pago: false, status: "PREVISTO", recorrente: true },
+  { id: "c-mar-agua", mesAno: "2027-03", descricao: "Água / Saneamento (Corsan)", categoria: "Água", valor: 120.00, vencimento: "2027-03-20", quemPaga: "DIV", pago: false, status: "PREVISTO", recorrente: true },
+  { id: "c-mar-internet", mesAno: "2027-03", descricao: "Internet Residencial (Vero)", categoria: "Internet", valor: 135.00, vencimento: "2027-03-15", quemPaga: "DIV", pago: false, status: "PREVISTO", recorrente: true },
+  { id: "c-mar-luz", mesAno: "2027-03", descricao: "Energia Elétrica (Luz)", categoria: "Luz", valor: 350.00, vencimento: "2027-03-20", quemPaga: "DIV", pago: false, status: "PREVISTO", recorrente: true },
+  { id: "c-mar-tel", mesAno: "2027-03", descricao: "Telefone Celular Vivo", categoria: "Telefone", valor: 64.00, vencimento: "2027-03-10", quemPaga: "VIC", pago: false, status: "PREVISTO", recorrente: true },
+  { id: "c-acordo-nubank-mar", mesAno: "2027-03", descricao: "Acordo Nubank (9/25)", categoria: "Outros", valor: 124.31, vencimento: "2027-03-02", quemPaga: "VIC", pago: false, status: "PREVISTO", recorrente: true, parcelada: true, parcelaAtual: 9, totalParcelas: 25 },
+
+  // ==========================================
+  // ABRIL / 2027
+  // ==========================================
+  { id: "c-abr-aluguel", mesAno: "2027-04", descricao: "Aluguel Residencial", categoria: "Aluguel", valor: 1450.00, vencimento: "2027-04-02", quemPaga: "DIV", pago: false, status: "PREVISTO", recorrente: true },
+  { id: "c-abr-carro", mesAno: "2027-04", descricao: "Parcela do Carro", categoria: "Carro", valor: 1750.00, vencimento: "2027-04-12", quemPaga: "DIV", pago: false, status: "PREVISTO", recorrente: true },
+  { id: "c-abr-agua", mesAno: "2027-04", descricao: "Água / Saneamento (Corsan)", categoria: "Água", valor: 120.00, vencimento: "2027-04-20", quemPaga: "DIV", pago: false, status: "PREVISTO", recorrente: true },
+  { id: "c-abr-internet", mesAno: "2027-04", descricao: "Internet Residencial (Vero)", categoria: "Internet", valor: 135.00, vencimento: "2027-04-15", quemPaga: "DIV", pago: false, status: "PREVISTO", recorrente: true },
+  { id: "c-abr-luz", mesAno: "2027-04", descricao: "Energia Elétrica (Luz)", categoria: "Luz", valor: 350.00, vencimento: "2027-04-20", quemPaga: "DIV", pago: false, status: "PREVISTO", recorrente: true },
+  { id: "c-abr-tel", mesAno: "2027-04", descricao: "Telefone Celular Vivo", categoria: "Telefone", valor: 64.00, vencimento: "2027-04-10", quemPaga: "VIC", pago: false, status: "PREVISTO", recorrente: true },
+  { id: "c-acordo-nubank-abr", mesAno: "2027-04", descricao: "Acordo Nubank (10/25)", categoria: "Outros", valor: 124.31, vencimento: "2027-04-02", quemPaga: "VIC", pago: false, status: "PREVISTO", recorrente: true, parcelada: true, parcelaAtual: 10, totalParcelas: 25 },
 ];
 
 export const INITIAL_POUPANCA: MovimentacaoPoupanca[] = [

@@ -89,6 +89,7 @@ export default function DashboardPage() {
   const [tipoInclusao, setTipoInclusao] = useState<"conta" | "fatura_pdf">("conta");
   const [novaDescricao, setNovaDescricao] = useState("");
   const [novaCategoria, setNovaCategoria] = useState<ContaCasa["categoria"]>("Luz");
+  const [categoriaManual, setCategoriaManual] = useState("");
   const [novoValor, setNovoValor] = useState("");
   const [novoVencimento, setNovoVencimento] = useState("2026-11-20");
   const [novoPagador, setNovoPagador] = useState<Pagador>("DIV");
@@ -128,11 +129,13 @@ export default function DashboardPage() {
 
   // Aba 5 Contas & Projeção 6 Meses
   const [mesVisualizadoContas, setMesVisualizadoContas] = useState<string>("2026-11");
+  const [contasExcluidas, setContasExcluidas] = useState<string[]>([]);
 
   // Modal / Edição de Contas Fixas
   const [contaEditando, setContaEditando] = useState<ContaCasa | null>(null);
   const [editDescricao, setEditDescricao] = useState("");
   const [editCategoria, setEditCategoria] = useState<ContaCasa["categoria"]>("Outros");
+  const [editCategoriaManual, setEditCategoriaManual] = useState("");
   const [editValor, setEditValor] = useState("");
   const [editVencimento, setEditVencimento] = useState("");
   const [editQuemPaga, setEditQuemPaga] = useState<Pagador>("DIV");
@@ -145,10 +148,13 @@ export default function DashboardPage() {
         const parsed = JSON.parse(saved);
         if (parsed.contasCasa) {
           // Remove contas com categoria "Fatura Cartão" de contasCasa para nunca duplicar com as faturas de comprasCartao
-          const semFaturasDuplicadas = parsed.contasCasa.filter(
+          let semFaturasDuplicadas = parsed.contasCasa.filter(
             (c: any) => c.categoria !== "Fatura Cartão"
           );
-          setContasCasa(semFaturasDuplicadas);
+          // Garante que meses futuros da projeção de 6 meses (ex: Fev, Mar, Abr 2027) estejam presentes
+          const mesesExistentes = new Set(semFaturasDuplicadas.map((c: any) => c.mesAno));
+          const novosMeses = INITIAL_CONTAS_CASA.filter((c) => !mesesExistentes.has(c.mesAno));
+          setContasCasa([...semFaturasDuplicadas, ...novosMeses]);
         }
         if (parsed.poupanca) {
           const limpos = parsed.poupanca.map((p: any) => ({
@@ -163,6 +169,7 @@ export default function DashboardPage() {
         if (parsed.comprasCartao) setComprasCartao(parsed.comprasCartao);
         if (parsed.contracheques) setContracheques(parsed.contracheques);
         if (parsed.faturasPagas) setFaturasPagas(parsed.faturasPagas);
+        if (parsed.contasExcluidas) setContasExcluidas(parsed.contasExcluidas);
       } catch (e) {
         console.error("Erro ao ler dados salvos v3:", e);
       }
@@ -190,9 +197,9 @@ export default function DashboardPage() {
     if (!carregado) return;
     localStorage.setItem(
       "financas_victor_leticia_v3",
-      JSON.stringify({ contasCasa, poupanca, salVictor, salLeticia, comprasCartao, contracheques, faturasPagas })
+      JSON.stringify({ contasCasa, poupanca, salVictor, salLeticia, comprasCartao, contracheques, faturasPagas, contasExcluidas })
     );
-  }, [contasCasa, poupanca, salVictor, salLeticia, comprasCartao, contracheques, faturasPagas, carregado]);
+  }, [contasCasa, poupanca, salVictor, salLeticia, comprasCartao, contracheques, faturasPagas, contasExcluidas, carregado]);
 
   // Cálculos de Salários (Legislação RS 2026)
   const resVictor = useMemo(() => calcularContrachequeRS(salVictor), [salVictor]);
@@ -452,8 +459,8 @@ export default function DashboardPage() {
 
   // Projeção dos Próximos 6 Meses para a Aba 5 Contas
   const projecao6Meses = useMemo(() => {
-    return calcularProjecao6Meses(mesSelecionado, contasCasa, comprasCartao);
-  }, [mesSelecionado, contasCasa, comprasCartao]);
+    return calcularProjecao6Meses(mesSelecionado, contasCasa, comprasCartao, contasExcluidas);
+  }, [mesSelecionado, contasCasa, comprasCartao, contasExcluidas]);
 
   // Sincroniza mês visualizado da aba contas quando muda o mês principal
   useEffect(() => {
@@ -792,13 +799,19 @@ export default function DashboardPage() {
   }, [dadosMesVisualizado.contas]);
 
   // Handlers
+  const CATEGORIAS_PADRAO = ["Luz", "Água", "Internet", "Telefone", "Aluguel", "Carro", "Fatura Cartão"];
+
   const adicionarContaCasa = (e: React.FormEvent) => {
     e.preventDefault();
     const val = parseFloat(novoValor.replace(",", "."));
     if (!novaDescricao || isNaN(val) || val <= 0) return;
 
-    const mesDaConta = novoVencimento ? novoVencimento.slice(0, 7) : mesSelecionado;
+    const mesDaConta = novoVencimento ? novoVencimento.slice(0, 7) : (aba === "contas" ? mesVisualizadoContas : mesSelecionado);
     const diaVencimento = novoVencimento ? novoVencimento.slice(8, 10) : "02";
+
+    const categoriaFinal = (novaCategoria === "Outros" && categoriaManual.trim())
+      ? categoriaManual.trim()
+      : novaCategoria;
 
     let descFinal = novaDescricao.trim();
     if (contaParcelada) {
@@ -807,10 +820,10 @@ export default function DashboardPage() {
     }
 
     const nova: ContaCasa = {
-      id: Date.now().toString(),
+      id: `conta-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
       mesAno: mesDaConta,
       descricao: descFinal,
-      categoria: novaCategoria,
+      categoria: categoriaFinal,
       valor: val,
       vencimento: novoVencimento || `${mesDaConta}-${diaVencimento}`,
       quemPaga: novoPagador,
@@ -838,10 +851,10 @@ export default function DashboardPage() {
         const futVencimento = `${futMesAno}-${diaVencimento}`;
 
         contasNovas.push({
-          id: `parc-${Date.now()}-${p}`,
+          id: `conta-${Date.now()}-${p}-${Math.random().toString(36).substring(2, 7)}`,
           mesAno: futMesAno,
           descricao: `${cleanDesc} (${p}/${totalParcelas})`,
-          categoria: novaCategoria,
+          categoria: categoriaFinal,
           valor: val,
           vencimento: futVencimento,
           quemPaga: novoPagador,
@@ -854,18 +867,21 @@ export default function DashboardPage() {
       }
     }
 
-    setContasCasa((prev) => [...contasNovas, ...prev]);
+    setContasCasa((prev) => [...prev, ...contasNovas]);
     setNovaDescricao("");
     setNovoValor("");
     setNovoVencimento("");
+    setCategoriaManual("");
     setContaParcelada(false);
     setParcelaAtual(1);
     setTotalParcelas(12);
     setStatusPDF("");
     setModalAberto(false);
 
-    // Se a conta pertencer a outro mês, direciona o seletor para o mês de vencimento
-    if (mesDaConta !== mesSelecionado) {
+    // Se estiver na aba contas, atualiza o mês visualizado para a conta adicionada
+    if (aba === "contas") {
+      setMesVisualizadoContas(mesDaConta);
+    } else if (mesDaConta !== mesSelecionado) {
       setMesSelecionado(mesDaConta);
     }
   };
@@ -873,7 +889,13 @@ export default function DashboardPage() {
   const iniciarEdicaoConta = (conta: ContaCasa) => {
     setContaEditando(conta);
     setEditDescricao(conta.descricao);
-    setEditCategoria(conta.categoria);
+    if (CATEGORIAS_PADRAO.includes(conta.categoria)) {
+      setEditCategoria(conta.categoria);
+      setEditCategoriaManual("");
+    } else {
+      setEditCategoria("Outros");
+      setEditCategoriaManual(conta.categoria === "Outros" ? "" : conta.categoria);
+    }
     setEditValor(conta.valor.toString());
     setEditVencimento(conta.vencimento);
     setEditQuemPaga(conta.quemPaga);
@@ -886,27 +908,50 @@ export default function DashboardPage() {
     if (isNaN(val) || val <= 0 || !editDescricao.trim()) return;
 
     const mesDaConta = editVencimento ? editVencimento.slice(0, 7) : contaEditando.mesAno;
+    const categoriaFinal = (editCategoria === "Outros" && editCategoriaManual.trim())
+      ? editCategoriaManual.trim()
+      : editCategoria;
 
-    setContasCasa((prev) =>
-      prev.map((c) =>
-        c.id === contaEditando.id
-          ? {
-              ...c,
-              descricao: editDescricao.trim(),
-              categoria: editCategoria,
-              valor: val,
-              vencimento: editVencimento,
-              quemPaga: editQuemPaga,
-              mesAno: mesDaConta,
-            }
-          : c
-      )
-    );
+    setContasCasa((prev) => {
+      const existe = prev.some((c) => c.id === contaEditando.id);
+      if (existe) {
+        return prev.map((c) =>
+          c.id === contaEditando.id
+            ? {
+                ...c,
+                descricao: editDescricao.trim(),
+                categoria: categoriaFinal,
+                valor: val,
+                vencimento: editVencimento,
+                quemPaga: editQuemPaga,
+                mesAno: mesDaConta,
+              }
+            : c
+        );
+      } else {
+        return [
+          ...prev,
+          {
+            ...contaEditando,
+            descricao: editDescricao.trim(),
+            categoria: categoriaFinal,
+            valor: val,
+            vencimento: editVencimento,
+            quemPaga: editQuemPaga,
+            mesAno: mesDaConta,
+          },
+        ];
+      }
+    });
     setContaEditando(null);
   };
 
   const deletarConta = (id: string) => {
     setContasCasa((prev) => prev.filter((c) => c.id !== id));
+    setContasExcluidas((prev) => {
+      if (prev.includes(id)) return prev;
+      return [...prev, id];
+    });
     if (contaEditando?.id === id) {
       setContaEditando(null);
     }
@@ -2226,7 +2271,15 @@ export default function DashboardPage() {
 
               <div className="flex items-center gap-3">
                 <button
-                  onClick={() => setModalAberto(true)}
+                  onClick={() => {
+                    setNovaCategoria("Outros");
+                    setCategoriaManual("");
+                    setNovaDescricao("");
+                    setNovoValor("");
+                    setNovoVencimento(`${mesVisualizadoContas}-10`);
+                    setTipoInclusao("conta");
+                    setModalAberto(true);
+                  }}
                   className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs px-4 py-2.5 rounded-xl shadow-sm transition inline-flex items-center gap-2"
                 >
                   <Plus className="w-4 h-4" />
@@ -2320,6 +2373,7 @@ export default function DashboardPage() {
                   <button
                     onClick={() => {
                       setNovaCategoria("Outros");
+                      setCategoriaManual("");
                       setNovaDescricao("");
                       setNovoValor("");
                       setNovoVencimento(`${mesVisualizadoContas}-10`);
@@ -3141,7 +3195,13 @@ export default function DashboardPage() {
                   <label className="block text-xs font-semibold text-slate-600 mb-1">Categoria</label>
                   <select
                     value={novaCategoria}
-                    onChange={(e) => setNovaCategoria(e.target.value as ContaCasa["categoria"])}
+                    onChange={(e) => {
+                      const val = e.target.value as ContaCasa["categoria"];
+                      setNovaCategoria(val);
+                      if (val !== "Outros") {
+                        setCategoriaManual("");
+                      }
+                    }}
                     className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none"
                   >
                     <option value="Luz">Luz (Energia Elétrica - CEEE / Equatorial / RGE)</option>
@@ -3151,9 +3211,29 @@ export default function DashboardPage() {
                     <option value="Aluguel">Aluguel / Condomínio / IPTU</option>
                     <option value="Carro">Carro / Seguro / IPVA / Financiamento</option>
                     <option value="Fatura Cartão">Fatura de Cartão (C6 Bank / Sicredi)</option>
-                    <option value="Outros">Outros Boletos</option>
+                    <option value="Outros">Outros Boletos (Digitar Categoria Manual)</option>
                   </select>
                 </div>
+
+                {novaCategoria === "Outros" && (
+                  <div className="bg-emerald-50/60 p-3 rounded-xl border border-emerald-200 space-y-1.5 animate-in fade-in duration-200">
+                    <label className="block text-xs font-bold text-emerald-800 flex items-center gap-1.5">
+                      <Pencil className="w-3.5 h-3.5 text-emerald-600" />
+                      Digite a Categoria Manual:
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Ex: Farmácia, Mercado, Condomínio, Academia, Streaming..."
+                      value={categoriaManual}
+                      onChange={(e) => setCategoriaManual(e.target.value)}
+                      className="w-full border border-emerald-300 bg-white rounded-lg px-3 py-2 text-sm font-medium focus:ring-2 focus:ring-emerald-500 focus:outline-none placeholder-slate-400"
+                    />
+                    <p className="text-[11px] text-emerald-700">
+                      Esta conta será classificada com o nome que você digitar acima.
+                    </p>
+                  </div>
+                )}
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 mb-1">Descrição</label>
                   <input
@@ -3307,8 +3387,14 @@ export default function DashboardPage() {
               <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-1">Categoria</label>
                 <select
-                  value={editCategoria}
-                  onChange={(e) => setEditCategoria(e.target.value as ContaCasa["categoria"])}
+                  value={CATEGORIAS_PADRAO.includes(editCategoria) ? editCategoria : "Outros"}
+                  onChange={(e) => {
+                    const val = e.target.value as ContaCasa["categoria"];
+                    setEditCategoria(val);
+                    if (val !== "Outros") {
+                      setEditCategoriaManual("");
+                    }
+                  }}
                   className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
                 >
                   <option value="Luz">Luz (Energia Elétrica)</option>
@@ -3318,9 +3404,31 @@ export default function DashboardPage() {
                   <option value="Aluguel">Aluguel / Condomínio / IPTU</option>
                   <option value="Carro">Carro / Seguro / IPVA / Financiamento</option>
                   <option value="Fatura Cartão">Fatura de Cartão</option>
-                  <option value="Outros">Outros Boletos</option>
+                  <option value="Outros">Outros Boletos (Digitar Categoria Manual)</option>
                 </select>
               </div>
+
+              {(!CATEGORIAS_PADRAO.includes(editCategoria) || editCategoria === "Outros") && (
+                <div className="bg-blue-50/60 p-3 rounded-xl border border-blue-200 space-y-1.5 animate-in fade-in duration-200">
+                  <label className="block text-xs font-bold text-blue-800 flex items-center gap-1.5">
+                    <Pencil className="w-3.5 h-3.5 text-blue-600" />
+                    Digite a Categoria Manual:
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Ex: Farmácia, Mercado, Condomínio, Academia..."
+                    value={editCategoriaManual}
+                    onChange={(e) => {
+                      setEditCategoriaManual(e.target.value);
+                    }}
+                    className="w-full border border-blue-300 bg-white rounded-lg px-3 py-2 text-sm font-medium focus:ring-2 focus:ring-blue-500 focus:outline-none placeholder-slate-400"
+                  />
+                  <p className="text-[11px] text-blue-700">
+                    A conta será atualizada com esta categoria personalizada.
+                  </p>
+                </div>
+              )}
 
               <div className="grid grid-cols-2 gap-3">
                 <div>

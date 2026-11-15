@@ -5,7 +5,7 @@ export interface ContaCasa {
   id: string;
   mesAno: string; // Ex: "2026-11"
   descricao: string;
-  categoria: "Luz" | "Água" | "Internet" | "Telefone" | "Aluguel" | "Carro" | "Fatura Cartão" | "Outros";
+  categoria: "Luz" | "Água" | "Internet" | "Telefone" | "Aluguel" | "Carro" | "Fatura Cartão" | "Outros" | (string & {});
   valor: number;
   vencimento: string;
   quemPaga: Pagador;
@@ -338,32 +338,28 @@ export function obterContasFixasPadraoMes(mesAlvo: string): ContaCasa[] {
 export function calcularProjecao6Meses(
   mesBase: string,
   contas: ContaCasa[],
-  compras: CompraCartao[]
+  compras: CompraCartao[],
+  contasExcluidas: string[] = []
 ): ProjecaoMesContas[] {
   const resultado: ProjecaoMesContas[] = [];
+  const setExcluidos = new Set(contasExcluidas);
 
   for (let offset = 0; offset < 6; offset++) {
     const mesAlvo = somarMeses(mesBase, offset);
     const label = formatarMesAnoLabel(mesAlvo);
 
     // Contas cadastradas para este mês específico
-    const contasEspecificas = contas.filter((c) => c.mesAno === mesAlvo);
-    const padraoMes = obterContasFixasPadraoMes(mesAlvo);
+    const contasEspecificas = contas.filter(
+      (c) => c.mesAno === mesAlvo && !setExcluidos.has(c.id)
+    );
 
     let contasDoMes: ContaCasa[] = [];
     if (contasEspecificas.length > 0) {
-      // Mescla as cadastradas com as padrão não cadastradas
-      const mapeadas = padraoMes.map((p) => {
-        const especifica = contasEspecificas.find(
-          (e) =>
-            e.descricao.toLowerCase().trim() === p.descricao.toLowerCase().trim() ||
-            (e.categoria === p.categoria && e.categoria !== "Outros")
-        );
-        return especifica || p;
-      });
-      const extras = contasEspecificas.filter((e) => !mapeadas.some((m) => m.id === e.id));
-      contasDoMes = [...mapeadas, ...extras];
+      contasDoMes = [...contasEspecificas];
     } else {
+      const padraoMes = obterContasFixasPadraoMes(mesAlvo).filter(
+        (p) => !setExcluidos.has(p.id) && !setExcluidos.has(`${mesAlvo}-${p.descricao}`)
+      );
       contasDoMes = padraoMes;
     }
 
@@ -377,9 +373,10 @@ export function calcularProjecao6Meses(
         if (parcelaFutura <= total) {
           const descBase = cb.descricao.replace(/\s*\(\d+\/\d+\)/, "").trim();
           const jaExiste = contasDoMes.some((c) => c.descricao.toLowerCase().includes(descBase.toLowerCase()));
-          if (!jaExiste) {
+          const projId = `proj-parc-${cb.id}-${mesAlvo}`;
+          if (!jaExiste && !setExcluidos.has(projId) && !setExcluidos.has(cb.id)) {
             contasDoMes.push({
-              id: `proj-parc-${cb.id}-${mesAlvo}`,
+              id: projId,
               mesAno: mesAlvo,
               descricao: `${descBase} (${parcelaFutura}/${total})`,
               categoria: cb.categoria,
@@ -396,6 +393,9 @@ export function calcularProjecao6Meses(
         }
       }
     }
+
+    // Garante que nenhuma conta excluída permaneça em contasDoMes
+    contasDoMes = contasDoMes.filter((c) => !setExcluidos.has(c.id));
 
     const totalContasFixas = contasDoMes
       .filter((c) => c.categoria !== "Fatura Cartão")
