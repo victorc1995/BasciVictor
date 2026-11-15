@@ -37,7 +37,7 @@ export const INITIAL_CONTAS_CASA: ContaCasa[] = [
 
 export const INITIAL_POUPANCA: MovimentacaoPoupanca[] = [
   { id: "p1", data: "2026-10-01", descricao: "Reserva de Emergência Intocável", tipo: "ENTRADA", valor: 5000.00, categoria: "Reserva Emergência" },
-  { id: "p2", data: "2026-10-15", descricao: "Sobra Venda HB20 / Caixa Veículo", tipo: "ENTRADA", valor: 26813.00, categoria: "Carro / Creta" },
+  { id: "p2", data: "2026-10-15", descricao: "Sobra Venda HB20 / Caixa Veículo", tipo: "ENTRADA", valor: 26813.00, categoria: "Metas / Projetos" },
   { id: "p3", data: "2026-11-10", descricao: "Previsão Diárias Op. Verão (Nov)", tipo: "ENTRADA", valor: 6200.00, categoria: "Diárias Op. Verão" },
   { id: "p4", data: "2026-11-30", descricao: "Compensação Acordo Banrisul (Difa Nov)", tipo: "SAIDA", valor: 1507.35, categoria: "Compensação Banrisul (Difa)" },
 ];

@@ -69,7 +69,7 @@ export default function DashboardPage() {
   const [poupDesc, setPoupDesc] = useState("");
   const [poupTipo, setPoupTipo] = useState<"ENTRADA" | "SAIDA">("ENTRADA");
   const [poupValor, setPoupValor] = useState("");
-  const [poupCat, setPoupCat] = useState<MovimentacaoPoupanca["categoria"]>("Carro / Creta");
+  const [poupCat, setPoupCat] = useState<MovimentacaoPoupanca["categoria"]>("Metas / Projetos");
 
   // Filtro Cartões
   const [bancoFiltro, setBancoFiltro] = useState<CartaoBanco>("C6 Bank");
@@ -81,7 +81,13 @@ export default function DashboardPage() {
       try {
         const parsed = JSON.parse(saved);
         if (parsed.contasCasa) setContasCasa(parsed.contasCasa);
-        if (parsed.poupanca) setPoupanca(parsed.poupanca);
+        if (parsed.poupanca) {
+          const limpos = parsed.poupanca.map((p: any) => ({
+            ...p,
+            categoria: (p.categoria === "Carro / Creta" || p.categoria === "Carro/Creta") ? "Metas / Projetos" : p.categoria,
+          }));
+          setPoupanca(limpos);
+        }
         if (parsed.salVictor) setSalVictor(parsed.salVictor);
         if (parsed.salLeticia) setSalLeticia(parsed.salLeticia);
         if (parsed.comprasCartao) setComprasCartao(parsed.comprasCartao);
@@ -463,7 +469,7 @@ export default function DashboardPage() {
                 <p className="text-xs text-amber-700 mt-1">Valor intocável de segurança</p>
               </div>
               <div className="bg-emerald-50 border border-emerald-200 p-6 rounded-2xl">
-                <span className="text-xs uppercase text-emerald-700 font-semibold">Saldo Livre para Metas / Carro</span>
+                <span className="text-xs uppercase text-emerald-700 font-semibold">Saldo Livre para Metas</span>
                 <p className="text-3xl font-extrabold text-emerald-700 mt-1">{formatarMoeda(resumoPoupanca.saldoLivreMetas)}</p>
                 <p className="text-xs text-emerald-700 mt-1">Disponível após descontar reserva</p>
               </div>

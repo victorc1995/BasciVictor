@@ -18,7 +18,7 @@ export interface MovimentacaoPoupanca {
   descricao: string;
   tipo: "ENTRADA" | "SAIDA";
   valor: number;
-  categoria: "Reserva Emergência" | "Carro / Creta" | "Diárias Op. Verão" | "Compensação Banrisul (Difa)" | "13º / Extras" | "Outros";
+  categoria: "Reserva Emergência" | "Metas / Projetos" | "Diárias Op. Verão" | "Compensação Banrisul (Difa)" | "13º / Extras" | "Outros";
 }
 
 export interface CompraCartao {
