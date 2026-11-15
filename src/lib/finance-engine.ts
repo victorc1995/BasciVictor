@@ -200,6 +200,12 @@ export interface ProjecaoMesContas {
   totalFaturaSicredi: number;
   totalGeral: number;
   isConfirmado: boolean;
+  totalParcelasVictor: number;
+  totalParcelasLeticia: number;
+  totalContasVictor: number;
+  totalContasLeticia: number;
+  totalGeralVictor: number;
+  totalGeralLeticia: number;
   contas: ContaCasa[];
   parcelasProjetadas: {
     id: string;
@@ -210,6 +216,31 @@ export interface ProjecaoMesContas {
     totalParcelas: number;
     valor: number;
     quemPaga: Pagador;
+    valorVictor: number;
+    valorLeticia: number;
+  }[];
+}
+
+export interface ProjecaoFaturaCartaoMes {
+  mesAno: string;
+  label: string;
+  banco: CartaoBanco;
+  totalFatura: number;
+  totalVictor: number;
+  totalLeticia: number;
+  totalDividido: number;
+  totalExclusivoVictor: number;
+  totalExclusivoLeticia: number;
+  parcelas: {
+    id: string;
+    descricao: string;
+    titularCartao: string;
+    parcelaAtual: number;
+    totalParcelas: number;
+    valor: number;
+    quemPaga: Pagador;
+    valorVictor: number;
+    valorLeticia: number;
   }[];
 }
 
@@ -300,6 +331,8 @@ export function calcularProjecao6Meses(
         if (c.banco === "C6 Bank") totalFaturaC6 += c.valor;
         if (c.banco === "Sicredi") totalFaturaSicredi += c.valor;
         const pInfo = parseParcela(c.parcelaInfo);
+        const valorVictor = c.quemPaga === "VIC" ? c.valor : c.quemPaga === "DIV" ? c.valor / 2 : 0;
+        const valorLeticia = c.quemPaga === "LE" ? c.valor : c.quemPaga === "DIV" ? c.valor / 2 : 0;
         parcelasProjetadas.push({
           id: c.id,
           descricao: c.descricao,
@@ -309,6 +342,8 @@ export function calcularProjecao6Meses(
           totalParcelas: pInfo ? pInfo.total : 1,
           valor: c.valor,
           quemPaga: c.quemPaga,
+          valorVictor,
+          valorLeticia,
         });
         continue;
       }
@@ -321,6 +356,8 @@ export function calcularProjecao6Meses(
           if (parcelaFutura <= pInfo.total) {
             if (c.banco === "C6 Bank") totalFaturaC6 += c.valor;
             if (c.banco === "Sicredi") totalFaturaSicredi += c.valor;
+            const valorVictor = c.quemPaga === "VIC" ? c.valor : c.quemPaga === "DIV" ? c.valor / 2 : 0;
+            const valorLeticia = c.quemPaga === "LE" ? c.valor : c.quemPaga === "DIV" ? c.valor / 2 : 0;
             parcelasProjetadas.push({
               id: `${c.id}-off${offset}`,
               descricao: c.descricao,
@@ -330,6 +367,8 @@ export function calcularProjecao6Meses(
               totalParcelas: pInfo.total,
               valor: c.valor,
               quemPaga: c.quemPaga,
+              valorVictor,
+              valorLeticia,
             });
           }
         }
@@ -347,6 +386,21 @@ export function calcularProjecao6Meses(
       ? valorFaturaCadastrada
       : totalFaturaC6 + totalFaturaSicredi;
 
+    // Separação de Gastos Victor vs Letícia no Mês Projetado
+    const totalParcelasVictor = parcelasProjetadas.reduce((acc, p) => acc + p.valorVictor, 0);
+    const totalParcelasLeticia = parcelasProjetadas.reduce((acc, p) => acc + p.valorLeticia, 0);
+
+    const totalContasVictor = contasDoMes
+      .filter((c) => c.categoria !== "Fatura Cartão")
+      .reduce((acc, c) => acc + (c.quemPaga === "VIC" ? c.valor : c.quemPaga === "DIV" ? c.valor / 2 : 0), 0);
+
+    const totalContasLeticia = contasDoMes
+      .filter((c) => c.categoria !== "Fatura Cartão")
+      .reduce((acc, c) => acc + (c.quemPaga === "LE" ? c.valor : c.quemPaga === "DIV" ? c.valor / 2 : 0), 0);
+
+    const totalGeralVictor = totalContasVictor + totalParcelasVictor;
+    const totalGeralLeticia = totalContasLeticia + totalParcelasLeticia;
+
     resultado.push({
       mesAno: mesAlvo,
       label,
@@ -355,8 +409,103 @@ export function calcularProjecao6Meses(
       totalFaturaSicredi,
       totalGeral: totalContasFixas + totalCartoes,
       isConfirmado: offset === 0 || hasFaturaConfirmada,
+      totalParcelasVictor,
+      totalParcelasLeticia,
+      totalContasVictor,
+      totalContasLeticia,
+      totalGeralVictor,
+      totalGeralLeticia,
       contas: contasDoMes,
       parcelasProjetadas,
+    });
+  }
+
+  return resultado;
+}
+
+/**
+ * Projeta as parcelas futuras de um cartão específico (C6 Bank ou Sicredi)
+ * separando os valores de Victor e Letícia para cada um dos próximos meses
+ */
+export function calcularProjecaoParcelasCartao(
+  banco: CartaoBanco,
+  mesBase: string,
+  compras: CompraCartao[]
+): ProjecaoFaturaCartaoMes[] {
+  const resultado: ProjecaoFaturaCartaoMes[] = [];
+
+  for (let offset = 0; offset < 6; offset++) {
+    const mesAlvo = somarMeses(mesBase, offset);
+    const label = formatarMesAnoLabel(mesAlvo);
+    const parcelasMes: ProjecaoFaturaCartaoMes["parcelas"] = [];
+
+    let totalExclusivoVictor = 0;
+    let totalExclusivoLeticia = 0;
+    let totalDividido = 0;
+
+    for (const c of compras) {
+      if (c.banco !== banco) continue;
+
+      let parcelaAtual = 1;
+      let totalParcelas = 1;
+      let incluiNoMes = false;
+
+      // 1. Se a compra já pertence diretamente ao mês alvo
+      if (c.mesFatura === mesAlvo) {
+        incluiNoMes = true;
+        const pInfo = parseParcela(c.parcelaInfo);
+        if (pInfo) {
+          parcelaAtual = pInfo.atual;
+          totalParcelas = pInfo.total;
+        }
+      }
+      // 2. Se a compra foi lançada no mês base e possui parcelas futuras
+      else if (c.mesFatura === mesBase && c.parcelaInfo && offset > 0) {
+        const pInfo = parseParcela(c.parcelaInfo);
+        if (pInfo) {
+          const prox = pInfo.atual + offset;
+          if (prox <= pInfo.total) {
+            incluiNoMes = true;
+            parcelaAtual = prox;
+            totalParcelas = pInfo.total;
+          }
+        }
+      }
+
+      if (incluiNoMes) {
+        const valorVictor = c.quemPaga === "VIC" ? c.valor : c.quemPaga === "DIV" ? c.valor / 2 : 0;
+        const valorLeticia = c.quemPaga === "LE" ? c.valor : c.quemPaga === "DIV" ? c.valor / 2 : 0;
+
+        if (c.quemPaga === "VIC") totalExclusivoVictor += c.valor;
+        else if (c.quemPaga === "LE") totalExclusivoLeticia += c.valor;
+        else totalDividido += c.valor;
+
+        parcelasMes.push({
+          id: `${c.id}-off${offset}`,
+          descricao: c.descricao,
+          titularCartao: c.titularCartao,
+          parcelaAtual,
+          totalParcelas,
+          valor: c.valor,
+          quemPaga: c.quemPaga,
+          valorVictor,
+          valorLeticia,
+        });
+      }
+    }
+
+    const metadeDiv = totalDividido / 2;
+    resultado.push({
+      mesAno: mesAlvo,
+      label,
+      banco,
+      totalFatura: totalExclusivoVictor + totalExclusivoLeticia + totalDividido,
+      totalVictor: totalExclusivoVictor + metadeDiv,
+      totalLeticia: totalExclusivoLeticia + metadeDiv,
+      totalDividido,
+      totalExclusivoVictor,
+      totalExclusivoLeticia,
+      parcelas: parcelasMes,
     });
   }
 

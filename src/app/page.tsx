@@ -33,6 +33,7 @@ import {
   TABELA_RS_2026,
   calcularContrachequeRS,
   calcularProjecao6Meses,
+  calcularProjecaoParcelasCartao,
   formatarMesAnoLabel,
   formatarMoeda,
   somarMeses,
@@ -96,8 +97,10 @@ export default function DashboardPage() {
   const [compraCartaoPoupData, setCompraCartaoPoupData] = useState<string>(() => new Date().toISOString().slice(0, 10));
   const [compraCartaoPoupStatus, setCompraCartaoPoupStatus] = useState<"CONFIRMADO" | "PREVISTO">("CONFIRMADO");
 
-  // Filtro Cartões
+  // Filtro & Visualização da Aba 4 (Cartões)
   const [bancoFiltro, setBancoFiltro] = useState<CartaoBanco>("C6 Bank");
+  const [visaoCartao, setVisaoCartao] = useState<"fatura_mes" | "projecao">("fatura_mes");
+  const [mesVisualizadoProjecaoCartao, setMesVisualizadoProjecaoCartao] = useState<string>("2026-12");
 
   // Aba 5 Contas & Projeção 6 Meses
   const [mesVisualizadoContas, setMesVisualizadoContas] = useState<string>("2026-11");
@@ -116,7 +119,13 @@ export default function DashboardPage() {
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        if (parsed.contasCasa) setContasCasa(parsed.contasCasa);
+        if (parsed.contasCasa) {
+          // Remove contas com categoria "Fatura Cartão" de contasCasa para nunca duplicar com as faturas de comprasCartao
+          const semFaturasDuplicadas = parsed.contasCasa.filter(
+            (c: any) => c.categoria !== "Fatura Cartão"
+          );
+          setContasCasa(semFaturasDuplicadas);
+        }
         if (parsed.poupanca) {
           const limpos = parsed.poupanca.map((p: any) => ({
             ...p,
@@ -306,6 +315,12 @@ export default function DashboardPage() {
         totalFaturaSicredi: 0,
         totalGeral: 0,
         isConfirmado: false,
+        totalParcelasVictor: 0,
+        totalParcelasLeticia: 0,
+        totalContasVictor: 0,
+        totalContasLeticia: 0,
+        totalGeralVictor: 0,
+        totalGeralLeticia: 0,
         contas: [],
         parcelasProjetadas: [],
       }
@@ -365,9 +380,25 @@ export default function DashboardPage() {
     };
   }, [comprasCartao, bancoFiltro, mesSelecionado]);
 
+  // Projeção de Parcelas Futuras do Cartão Selecionado na Aba 4
+  const projecaoCartao = useMemo(() => {
+    return calcularProjecaoParcelasCartao(bancoFiltro, mesSelecionado, comprasCartao);
+  }, [bancoFiltro, mesSelecionado, comprasCartao]);
+
+  const dadosMesProjecaoCartao = useMemo(() => {
+    return (
+      projecaoCartao.find((p) => p.mesAno === mesVisualizadoProjecaoCartao) ||
+      projecaoCartao[1] ||
+      projecaoCartao[0]
+    );
+  }, [projecaoCartao, mesVisualizadoProjecaoCartao]);
+
   // Cálculos de Contas da Casa + Cartões (Gasto Total de Cada Um no Mês)
+  // FILTRO ESTRITO: categoria !== "Fatura Cartão" para NÃO DOBRAR o valor das faturas!
   const resumoMensalCasal = useMemo(() => {
-    const contasDoMes = contasCasa.filter((c) => c.mesAno === mesSelecionado);
+    const contasDoMes = contasCasa.filter(
+      (c) => c.mesAno === mesSelecionado && c.categoria !== "Fatura Cartão"
+    );
     let casaVic = 0;
     let casaLe = 0;
     let casaDiv = 0;
@@ -472,7 +503,7 @@ export default function DashboardPage() {
       ...INITIAL_COMPRAS_CARTAO,
     ]);
     setContasCasa((prev) => [
-      ...prev.filter((c) => c.mesAno !== "2026-11"),
+      ...prev.filter((c) => c.mesAno !== "2026-11" && c.categoria !== "Fatura Cartão"),
       ...INITIAL_CONTAS_CASA,
     ]);
   };
@@ -1278,22 +1309,48 @@ export default function DashboardPage() {
         {/* ========================================================= */}
         {aba === "cartoes" && (
           <div className="space-y-6">
-            {/* Seletor C6 Bank vs Sicredi + Resumo de Divisão */}
+            {/* Seletor C6 Bank vs Sicredi + Alternador de Visualização (Fatura Atual vs Projeção) */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
-              <div className="flex gap-2">
-                {(["C6 Bank", "Sicredi"] as CartaoBanco[]).map((banco) => (
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex gap-1.5 bg-slate-100 p-1 rounded-xl">
+                  {(["C6 Bank", "Sicredi"] as CartaoBanco[]).map((banco) => (
+                    <button
+                      key={banco}
+                      onClick={() => setBancoFiltro(banco)}
+                      className={`px-4 py-2 rounded-lg font-bold text-sm transition ${
+                        bancoFiltro === banco
+                          ? "bg-slate-900 text-white shadow-sm"
+                          : "text-slate-600 hover:text-slate-900"
+                      }`}
+                    >
+                      {banco}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Alternador de Visualização: Fatura Atual vs Projeção Futura */}
+                <div className="flex gap-1 bg-emerald-50 border border-emerald-200 p-1 rounded-xl">
                   <button
-                    key={banco}
-                    onClick={() => setBancoFiltro(banco)}
-                    className={`px-5 py-2.5 rounded-xl font-bold text-sm transition ${
-                      bancoFiltro === banco
-                        ? "bg-slate-900 text-white shadow-sm"
-                        : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                    onClick={() => setVisaoCartao("fatura_mes")}
+                    className={`px-3 py-1.5 text-xs font-bold rounded-lg transition ${
+                      visaoCartao === "fatura_mes"
+                        ? "bg-emerald-600 text-white shadow-sm"
+                        : "text-emerald-800 hover:bg-emerald-100"
                     }`}
                   >
-                    {banco}
+                    💳 Fatura Atual ({mesSelecionado})
                   </button>
-                ))}
+                  <button
+                    onClick={() => setVisaoCartao("projecao")}
+                    className={`px-3 py-1.5 text-xs font-bold rounded-lg transition ${
+                      visaoCartao === "projecao"
+                        ? "bg-emerald-600 text-white shadow-sm"
+                        : "text-emerald-800 hover:bg-emerald-100"
+                    }`}
+                  >
+                    📈 Projeção das Parcelas (6 Meses)
+                  </button>
+                </div>
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
@@ -1319,113 +1376,263 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            {/* Sub-header identificando o cartão selecionado */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between text-xs text-slate-500 px-1 gap-1">
-              <span>
-                Exibindo cálculos exclusivos para o cartão <strong className="text-slate-800">{bancoFiltro}</strong> ({resumoCartaoSelecionado.quantidadeItens} compras no mês {mesSelecionado})
-              </span>
-              <span>
-                Total da Fatura {bancoFiltro}: <strong className="text-slate-800 font-bold">{formatarMoeda(resumoCartaoSelecionado.totalGeralCartao)}</strong>
-              </span>
-            </div>
+            {visaoCartao === "fatura_mes" ? (
+              <>
+                {/* Sub-header identificando o cartão selecionado */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between text-xs text-slate-500 px-1 gap-1">
+                  <span>
+                    Exibindo cálculos exclusivos para o cartão <strong className="text-slate-800">{bancoFiltro}</strong> ({resumoCartaoSelecionado.quantidadeItens} compras no mês {mesSelecionado})
+                  </span>
+                  <span>
+                    Total da Fatura {bancoFiltro}: <strong className="text-slate-800 font-bold">{formatarMoeda(resumoCartaoSelecionado.totalGeralCartao)}</strong>
+                  </span>
+                </div>
 
-            {/* Cards de Divisão do Cartão Selecionado (VIC / LE / DIV 50-50) */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              <div className="bg-white p-4 rounded-2xl border border-slate-200">
-                <span className="text-xs text-slate-400 font-semibold uppercase">Exclusivo Victor ({bancoFiltro})</span>
-                <p className="text-xl font-bold text-blue-600 mt-1">{formatarMoeda(resumoCartaoSelecionado.vicDireto)}</p>
-                <p className="text-[11px] text-slate-400 mt-1">Compras exclusivas do Victor</p>
-              </div>
-              <div className="bg-white p-4 rounded-2xl border border-slate-200">
-                <span className="text-xs text-slate-400 font-semibold uppercase">Exclusivo Letícia ({bancoFiltro})</span>
-                <p className="text-xl font-bold text-purple-600 mt-1">{formatarMoeda(resumoCartaoSelecionado.leDireto)}</p>
-                <p className="text-[11px] text-slate-400 mt-1">Compras exclusivas da Letícia</p>
-              </div>
-              <div className="bg-white p-4 rounded-2xl border border-slate-200">
-                <span className="text-xs text-slate-400 font-semibold uppercase">Dividido ({bancoFiltro})</span>
-                <p className="text-xl font-bold text-amber-600 mt-1">{formatarMoeda(resumoCartaoSelecionado.divTotal)}</p>
-                <p className="text-xs text-slate-500 mt-1">Metade p/ cada: {formatarMoeda(resumoCartaoSelecionado.metadeDiv)}</p>
-              </div>
-              <div className="bg-slate-900 text-white p-4 rounded-2xl">
-                <span className="text-xs text-slate-400 font-semibold uppercase">Rateio {bancoFiltro}</span>
-                <p className="text-sm mt-1">
-                  Victor: <strong className="text-emerald-400">{formatarMoeda(resumoCartaoSelecionado.totalVictorCartao)}</strong>
-                </p>
-                <p className="text-sm">
-                  Letícia: <strong className="text-emerald-400">{formatarMoeda(resumoCartaoSelecionado.totalLeticiaCartao)}</strong>
-                </p>
-              </div>
-            </div>
+                {/* Cards de Divisão do Cartão Selecionado (VIC / LE / DIV 50-50) */}
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <div className="bg-white p-4 rounded-2xl border border-slate-200">
+                    <span className="text-xs text-slate-400 font-semibold uppercase">Exclusivo Victor ({bancoFiltro})</span>
+                    <p className="text-xl font-bold text-blue-600 mt-1">{formatarMoeda(resumoCartaoSelecionado.vicDireto)}</p>
+                    <p className="text-[11px] text-slate-400 mt-1">Compras exclusivas do Victor</p>
+                  </div>
+                  <div className="bg-white p-4 rounded-2xl border border-slate-200">
+                    <span className="text-xs text-slate-400 font-semibold uppercase">Exclusivo Letícia ({bancoFiltro})</span>
+                    <p className="text-xl font-bold text-purple-600 mt-1">{formatarMoeda(resumoCartaoSelecionado.leDireto)}</p>
+                    <p className="text-[11px] text-slate-400 mt-1">Compras exclusivas da Letícia</p>
+                  </div>
+                  <div className="bg-white p-4 rounded-2xl border border-slate-200">
+                    <span className="text-xs text-slate-400 font-semibold uppercase">Dividido ({bancoFiltro})</span>
+                    <p className="text-xl font-bold text-amber-600 mt-1">{formatarMoeda(resumoCartaoSelecionado.divTotal)}</p>
+                    <p className="text-xs text-slate-500 mt-1">Metade p/ cada: {formatarMoeda(resumoCartaoSelecionado.metadeDiv)}</p>
+                  </div>
+                  <div className="bg-slate-900 text-white p-4 rounded-2xl">
+                    <span className="text-xs text-slate-400 font-semibold uppercase">Rateio {bancoFiltro}</span>
+                    <p className="text-sm mt-1">
+                      Victor: <strong className="text-emerald-400">{formatarMoeda(resumoCartaoSelecionado.totalVictorCartao)}</strong>
+                    </p>
+                    <p className="text-sm">
+                      Letícia: <strong className="text-emerald-400">{formatarMoeda(resumoCartaoSelecionado.totalLeticiaCartao)}</strong>
+                    </p>
+                  </div>
+                </div>
 
-            {/* Tabela de Lançamentos do Cartão Selecionado */}
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-              <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
-                <h3 className="font-bold text-slate-800">Lançamentos — {bancoFiltro} ({mesSelecionado})</h3>
-                <span className="text-xs text-slate-500">Clique em VIC / LE / DIV para recalcular o rateio na hora</span>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm text-left">
-                  <thead className="bg-slate-50 text-slate-500 text-xs uppercase">
-                    <tr>
-                      <th className="px-6 py-3">Data</th>
-                      <th className="px-6 py-3">Estabelecimento / Parcela</th>
-                      <th className="px-6 py-3">Valor</th>
-                      <th className="px-6 py-3">Quem Paga</th>
-                      <th className="px-6 py-3 text-right">Ação</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {comprasCartao
-                      .filter((c) => c.banco === bancoFiltro && c.mesFatura === mesSelecionado)
-                      .map((compra) => (
-                        <tr key={compra.id} className="hover:bg-slate-50">
-                          <td className="px-6 py-3 text-slate-500 whitespace-nowrap">{compra.dataCompra}</td>
-                          <td className="px-6 py-3 font-medium text-slate-800">
-                            {compra.descricao}{" "}
-                            {compra.parcelaInfo && (
-                              <span className="ml-2 text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">
-                                {compra.parcelaInfo}
-                              </span>
-                            )}
-                          </td>
-                          <td className="px-6 py-3 font-bold text-slate-800 whitespace-nowrap">
-                            {formatarMoeda(compra.valor)}
-                          </td>
-                          <td className="px-6 py-3">
-                            <div className="inline-flex rounded-lg border border-slate-200 overflow-hidden">
-                              {(["VIC", "LE", "DIV"] as Pagador[]).map((opcao) => (
+                {/* Tabela de Lançamentos do Cartão Selecionado */}
+                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                  <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+                    <h3 className="font-bold text-slate-800">Lançamentos — {bancoFiltro} ({mesSelecionado})</h3>
+                    <span className="text-xs text-slate-500">Clique em VIC / LE / DIV para recalcular o rateio na hora</span>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm text-left">
+                      <thead className="bg-slate-50 text-slate-500 text-xs uppercase">
+                        <tr>
+                          <th className="px-6 py-3">Data</th>
+                          <th className="px-6 py-3">Estabelecimento / Parcela</th>
+                          <th className="px-6 py-3">Valor</th>
+                          <th className="px-6 py-3">Quem Paga</th>
+                          <th className="px-6 py-3 text-right">Ação</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {comprasCartao
+                          .filter((c) => c.banco === bancoFiltro && c.mesFatura === mesSelecionado)
+                          .map((compra) => (
+                            <tr key={compra.id} className="hover:bg-slate-50">
+                              <td className="px-6 py-3 text-slate-500 whitespace-nowrap">{compra.dataCompra}</td>
+                              <td className="px-6 py-3 font-medium text-slate-800">
+                                {compra.descricao}{" "}
+                                {compra.parcelaInfo && (
+                                  <span className="ml-2 text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">
+                                    {compra.parcelaInfo}
+                                  </span>
+                                )}
+                              </td>
+                              <td className="px-6 py-3 font-bold text-slate-800 whitespace-nowrap">
+                                {formatarMoeda(compra.valor)}
+                              </td>
+                              <td className="px-6 py-3">
+                                <div className="inline-flex rounded-lg border border-slate-200 overflow-hidden">
+                                  {(["VIC", "LE", "DIV"] as Pagador[]).map((opcao) => (
+                                    <button
+                                      key={opcao}
+                                      onClick={() => alterarPagadorCompra(compra.id, opcao)}
+                                      className={`px-2.5 py-1 text-xs font-bold transition ${
+                                        compra.quemPaga === opcao
+                                          ? opcao === "VIC"
+                                            ? "bg-blue-600 text-white"
+                                            : opcao === "LE"
+                                            ? "bg-purple-600 text-white"
+                                            : "bg-amber-500 text-white"
+                                          : "bg-white text-slate-500 hover:bg-slate-100"
+                                      }`}
+                                    >
+                                      {opcao}
+                                    </button>
+                                  ))}
+                                </div>
+                              </td>
+                              <td className="px-6 py-3 text-right">
                                 <button
-                                  key={opcao}
-                                  onClick={() => alterarPagadorCompra(compra.id, opcao)}
-                                  className={`px-2.5 py-1 text-xs font-bold transition ${
-                                    compra.quemPaga === opcao
-                                      ? opcao === "VIC"
-                                        ? "bg-blue-600 text-white"
-                                        : opcao === "LE"
-                                        ? "bg-purple-600 text-white"
-                                        : "bg-amber-500 text-white"
-                                      : "bg-white text-slate-500 hover:bg-slate-100"
+                                  onClick={() => setComprasCartao((prev) => prev.filter((c) => c.id !== compra.id))}
+                                  className="text-slate-400 hover:text-rose-600"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </>
+            ) : (
+              /* MODO PROJEÇÃO DE PARCELAS FUTURAS DA ABA 4 */
+              <div className="space-y-6">
+                <div className="bg-slate-900 text-white p-5 rounded-2xl shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+                  <div>
+                    <h3 className="text-lg font-bold flex items-center gap-2">
+                      <CreditCard className="w-5 h-5 text-emerald-400" />
+                      Projeção de Parcelas Futuras — {bancoFiltro}
+                    </h3>
+                    <p className="text-xs text-slate-400 mt-1">
+                      Acompanhe as parcelas ativas deste cartão nos próximos 6 meses com divisão automática entre Victor e Letícia.
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-[10px] uppercase text-slate-400 block">Total Mês {dadosMesProjecaoCartao.label}</span>
+                    <span className="text-xl font-black text-emerald-400">{formatarMoeda(dadosMesProjecaoCartao.totalFatura)}</span>
+                  </div>
+                </div>
+
+                {/* Linha do Tempo das Parcelas do Cartão */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                  {projecaoCartao.map((pMes) => {
+                    const isAtivo = mesVisualizadoProjecaoCartao === pMes.mesAno;
+                    return (
+                      <button
+                        key={pMes.mesAno}
+                        type="button"
+                        onClick={() => setMesVisualizadoProjecaoCartao(pMes.mesAno)}
+                        className={`p-4 rounded-2xl border text-left transition-all ${
+                          isAtivo
+                            ? "bg-slate-900 text-white border-slate-900 shadow-md ring-2 ring-emerald-500"
+                            : "bg-white hover:bg-slate-50 border-slate-200 text-slate-800 shadow-sm"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between text-xs mb-1">
+                          <span className={`font-bold ${isAtivo ? "text-emerald-400" : "text-slate-700"}`}>
+                            {pMes.label.split("/")[0]}
+                          </span>
+                          <span className="text-[10px] text-slate-400">{pMes.parcelas.length} parc.</span>
+                        </div>
+                        <p className="text-base font-extrabold mt-1">{formatarMoeda(pMes.totalFatura)}</p>
+                        <div
+                          className={`mt-2 pt-2 border-t text-[11px] space-y-0.5 ${
+                            isAtivo ? "border-slate-800 text-slate-300" : "border-slate-100 text-slate-600"
+                          }`}
+                        >
+                          <div className="flex justify-between text-blue-600 font-semibold">
+                            <span>Victor:</span>
+                            <span>{formatarMoeda(pMes.totalVictor)}</span>
+                          </div>
+                          <div className="flex justify-between text-purple-600 font-semibold">
+                            <span>Letícia:</span>
+                            <span>{formatarMoeda(pMes.totalLeticia)}</span>
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Tabela de Parcelas do Mês Selecionado na Projeção */}
+                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                  <div className="px-6 py-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div>
+                      <h4 className="font-bold text-slate-800 text-sm">
+                        Parcelas Ativas em {dadosMesProjecaoCartao.label} ({bancoFiltro})
+                      </h4>
+                      <p className="text-xs text-slate-500">
+                        {dadosMesProjecaoCartao.parcelas.length} parcelas programadas para esta fatura
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-4 bg-slate-50 px-4 py-2 rounded-xl border border-slate-200 text-xs">
+                      <div>
+                        <span className="text-slate-500 block text-[10px]">Victor:</span>
+                        <strong className="text-blue-600">{formatarMoeda(dadosMesProjecaoCartao.totalVictor)}</strong>
+                      </div>
+                      <div className="h-6 w-px bg-slate-200" />
+                      <div>
+                        <span className="text-slate-500 block text-[10px]">Letícia:</span>
+                        <strong className="text-purple-600">{formatarMoeda(dadosMesProjecaoCartao.totalLeticia)}</strong>
+                      </div>
+                      <div className="h-6 w-px bg-slate-200" />
+                      <div>
+                        <span className="text-slate-500 block text-[10px]">Total:</span>
+                        <strong className="text-slate-900">{formatarMoeda(dadosMesProjecaoCartao.totalFatura)}</strong>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm text-left">
+                      <thead className="bg-slate-50 text-slate-500 text-xs uppercase">
+                        <tr>
+                          <th className="px-6 py-3">Estabelecimento</th>
+                          <th className="px-6 py-3">Titular</th>
+                          <th className="px-6 py-3">Parcela</th>
+                          <th className="px-6 py-3">Valor da Parcela</th>
+                          <th className="px-6 py-3">Quem Paga</th>
+                          <th className="px-6 py-3 text-right">Rateio (Victor / Letícia)</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {dadosMesProjecaoCartao.parcelas.length === 0 ? (
+                          <tr>
+                            <td colSpan={6} className="px-6 py-8 text-center text-xs text-slate-400">
+                              Nenhuma parcela ativa prevista para {dadosMesProjecaoCartao.label} no {bancoFiltro}.
+                            </td>
+                          </tr>
+                        ) : (
+                          dadosMesProjecaoCartao.parcelas.map((parc) => (
+                            <tr key={parc.id} className="hover:bg-slate-50">
+                              <td className="px-6 py-3 font-semibold text-slate-800">{parc.descricao}</td>
+                              <td className="px-6 py-3 text-xs text-slate-500">{parc.titularCartao}</td>
+                              <td className="px-6 py-3">
+                                <span className="bg-slate-100 text-slate-700 text-xs font-bold px-2.5 py-0.5 rounded-full">
+                                  {parc.parcelaAtual}/{parc.totalParcelas}
+                                </span>
+                              </td>
+                              <td className="px-6 py-3 font-extrabold text-slate-900">{formatarMoeda(parc.valor)}</td>
+                              <td className="px-6 py-3">
+                                <span
+                                  className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+                                    parc.quemPaga === "VIC"
+                                      ? "bg-blue-50 text-blue-700"
+                                      : parc.quemPaga === "LE"
+                                      ? "bg-purple-50 text-purple-700"
+                                      : "bg-amber-50 text-amber-700"
                                   }`}
                                 >
-                                  {opcao}
-                                </button>
-                              ))}
-                            </div>
-                          </td>
-                          <td className="px-6 py-3 text-right">
-                            <button
-                              onClick={() => setComprasCartao((prev) => prev.filter((c) => c.id !== compra.id))}
-                              className="text-slate-400 hover:text-rose-600"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                  </tbody>
-                </table>
+                                  {parc.quemPaga === "DIV" ? "Dividido (50/50)" : parc.quemPaga === "VIC" ? "100% Victor" : "100% Letícia"}
+                                </span>
+                              </td>
+                              <td className="px-6 py-3 text-right text-xs">
+                                <span className="text-blue-600 font-bold">V: {formatarMoeda(parc.valorVictor)}</span>
+                                <span className="text-slate-300 mx-1.5">•</span>
+                                <span className="text-purple-600 font-bold">L: {formatarMoeda(parc.valorLeticia)}</span>
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
               </div>
-            </div>
+            )}
           </div>
         )}
 
@@ -1510,12 +1717,16 @@ export default function DashboardPage() {
                         }`}
                       >
                         <div className="flex justify-between">
-                          <span>Contas Fixas:</span>
-                          <span className="font-medium">{formatarMoeda(proj.totalContasFixas)}</span>
-                        </div>
-                        <div className="flex justify-between">
                           <span>Cartões / Parc:</span>
                           <span className="font-medium">{formatarMoeda(proj.totalFaturaC6 + proj.totalFaturaSicredi)}</span>
+                        </div>
+                        <div className="flex justify-between text-blue-600 font-semibold pt-0.5 border-t border-slate-100/60">
+                          <span>Victor (Parc):</span>
+                          <span>{formatarMoeda(proj.totalParcelasVictor)}</span>
+                        </div>
+                        <div className="flex justify-between text-purple-600 font-semibold">
+                          <span>Letícia (Parc):</span>
+                          <span>{formatarMoeda(proj.totalParcelasLeticia)}</span>
                         </div>
                       </div>
                     </button>
@@ -1603,13 +1814,35 @@ export default function DashboardPage() {
               {/* Coluna 2: Parcelas Futuras Projetadas dos Cartões */}
               <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
                 <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
-                  <h4 className="font-bold text-slate-800 text-sm">
-                    Parcelas dos Cartões Previstas ({formatarMesAnoLabel(mesVisualizadoContas)})
-                  </h4>
-                  <span className="text-xs font-bold text-emerald-600">
+                  <div>
+                    <h4 className="font-bold text-slate-800 text-sm">
+                      Parcelas dos Cartões Previstas ({formatarMesAnoLabel(mesVisualizadoContas)})
+                    </h4>
+                    <p className="text-xs text-slate-500">
+                      Previsão de parcelas ativas separada por Victor e Letícia
+                    </p>
+                  </div>
+                  <span className="text-sm font-extrabold text-emerald-600">
                     Total: {formatarMoeda(dadosMesVisualizado.totalFaturaC6 + dadosMesVisualizado.totalFaturaSicredi)}
                   </span>
                 </div>
+
+                {/* Destaque de Rateio: Parte Victor vs Parte Letícia nas Parcelas */}
+                <div className="grid grid-cols-2 divide-x divide-slate-100 bg-slate-50 border-b border-slate-100 text-center py-2.5 px-4">
+                  <div>
+                    <span className="text-[10px] font-bold uppercase text-blue-600 block">Parte Victor (Parcelas)</span>
+                    <span className="text-base font-extrabold text-blue-700">
+                      {formatarMoeda(dadosMesVisualizado.totalParcelasVictor)}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-bold uppercase text-purple-600 block">Parte Letícia (Parcelas)</span>
+                    <span className="text-base font-extrabold text-purple-700">
+                      {formatarMoeda(dadosMesVisualizado.totalParcelasLeticia)}
+                    </span>
+                  </div>
+                </div>
+
                 <div className="divide-y divide-slate-100 max-h-[420px] overflow-y-auto">
                   {dadosMesVisualizado.parcelasProjetadas.length === 0 ? (
                     <div className="p-8 text-center text-xs text-slate-400">
@@ -1617,7 +1850,7 @@ export default function DashboardPage() {
                     </div>
                   ) : (
                     dadosMesVisualizado.parcelasProjetadas.map((p) => (
-                      <div key={p.id} className="px-6 py-3 flex items-center justify-between">
+                      <div key={p.id} className="px-6 py-3.5 flex items-center justify-between hover:bg-slate-50 transition">
                         <div>
                           <p className="text-sm font-semibold text-slate-800">{p.descricao}</p>
                           <p className="text-xs text-slate-500">
@@ -1626,17 +1859,22 @@ export default function DashboardPage() {
                         </div>
                         <div className="text-right">
                           <span className="font-bold text-slate-900 block">{formatarMoeda(p.valor)}</span>
-                          <span
-                            className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
-                              p.quemPaga === "VIC"
-                                ? "bg-blue-50 text-blue-700"
-                                : p.quemPaga === "LE"
-                                ? "bg-purple-50 text-purple-700"
-                                : "bg-amber-50 text-amber-700"
-                            }`}
-                          >
-                            {p.quemPaga}
-                          </span>
+                          <div className="text-[11px] text-slate-500 flex items-center justify-end gap-1.5 mt-0.5">
+                            <span
+                              className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                                p.quemPaga === "VIC"
+                                  ? "bg-blue-50 text-blue-700"
+                                  : p.quemPaga === "LE"
+                                  ? "bg-purple-50 text-purple-700"
+                                  : "bg-amber-50 text-amber-700"
+                              }`}
+                            >
+                              {p.quemPaga === "DIV" ? "Dividido 50/50" : p.quemPaga === "VIC" ? "100% Victor" : "100% Letícia"}
+                            </span>
+                            <span className="text-[10px] font-semibold text-slate-500">
+                              (V: {formatarMoeda(p.valorVictor)} • L: {formatarMoeda(p.valorLeticia)})
+                            </span>
+                          </div>
                         </div>
                       </div>
                     ))

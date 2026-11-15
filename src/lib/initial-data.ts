@@ -42,8 +42,6 @@ export const INITIAL_CONTAS_CASA: ContaCasa[] = [
   { id: "c4", mesAno: "2026-11", descricao: "Água / Saneamento (Corsan)", categoria: "Água", valor: 90.00, vencimento: "2026-11-20", quemPaga: "DIV", pago: false, status: "CONFIRMADO", recorrente: true },
   { id: "c5", mesAno: "2026-11", descricao: "Parcela Financiamento Carro", categoria: "Carro", valor: 1100.00, vencimento: "2026-11-20", quemPaga: "DIV", pago: false, status: "CONFIRMADO", recorrente: true },
   { id: "c6", mesAno: "2026-11", descricao: "Telefone Celular Vivo", categoria: "Telefone", valor: 64.00, vencimento: "2026-11-10", quemPaga: "VIC", pago: true, status: "CONFIRMADO", recorrente: true },
-  { id: "c7", mesAno: "2026-11", descricao: "Fatura C6 Bank", categoria: "Fatura Cartão", valor: 2890.81, vencimento: "2026-11-01", quemPaga: "DIV", pago: false, status: "CONFIRMADO", recorrente: false },
-  { id: "c8", mesAno: "2026-11", descricao: "Fatura Sicredi", categoria: "Fatura Cartão", valor: 3609.22, vencimento: "2026-11-03", quemPaga: "DIV", pago: false, status: "CONFIRMADO", recorrente: false },
 ];
 
 export const INITIAL_POUPANCA: MovimentacaoPoupanca[] = [
