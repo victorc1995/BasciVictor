@@ -112,14 +112,6 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
         </div>
       </div>
-
-      {/* Aviso informativo de Snapshot se não houver credenciais */}
-      {source === 'snapshot-fallback' && errorNotice && (
-        <div className="bg-amber-500/10 border-t border-b border-amber-500/20 px-4 py-1.5 text-center text-xs text-amber-300 flex items-center justify-center space-x-2">
-          <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
-          <span>{errorNotice}</span>
-        </div>
-      )}
     </header>
   );
 };
