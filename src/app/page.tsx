@@ -341,13 +341,15 @@ export default function DashboardPage() {
     const val = parseFloat(novoValor.replace(",", "."));
     if (!novaDescricao || isNaN(val) || val <= 0) return;
 
+    const mesDaConta = novoVencimento ? novoVencimento.slice(0, 7) : mesSelecionado;
+
     const nova: ContaCasa = {
       id: Date.now().toString(),
-      mesAno: mesSelecionado,
+      mesAno: mesDaConta,
       descricao: novaDescricao,
       categoria: novaCategoria,
       valor: val,
-      vencimento: novoVencimento,
+      vencimento: novoVencimento || `${mesDaConta}-10`,
       quemPaga: novoPagador,
       pago: false,
       status: "CONFIRMADO",
@@ -355,7 +357,14 @@ export default function DashboardPage() {
     setContasCasa((prev) => [nova, ...prev]);
     setNovaDescricao("");
     setNovoValor("");
+    setNovoVencimento("");
+    setStatusPDF("");
     setModalAberto(false);
+
+    // Se a conta pertencer a outro mês, direciona o seletor para o mês de vencimento
+    if (mesDaConta !== mesSelecionado) {
+      setMesSelecionado(mesDaConta);
+    }
   };
 
   const handleUploadQualquerPDF = async (e: React.ChangeEvent<HTMLInputElement>) => {
