@@ -25,6 +25,7 @@ import {
   PieChart,
   Car,
   Users,
+  PlusCircle,
 } from "lucide-react";
 import {
   CartaoBanco,
@@ -35,6 +36,7 @@ import {
   Pagador,
   ParametrosSalario,
   ProjecaoMesContas,
+  RendimentoExtraItem,
   TABELA_RS_2026,
   calcularContrachequeRS,
   calcularProjecao6Meses,
@@ -81,6 +83,9 @@ export default function DashboardPage() {
   const [novoValor, setNovoValor] = useState("");
   const [novoVencimento, setNovoVencimento] = useState("2026-11-20");
   const [novoPagador, setNovoPagador] = useState<Pagador>("DIV");
+  const [contaParcelada, setContaParcelada] = useState(false);
+  const [parcelaAtual, setParcelaAtual] = useState(1);
+  const [totalParcelas, setTotalParcelas] = useState(12);
 
   // Upload PDF
   const [bancoPDF, setBancoPDF] = useState<CartaoBanco>("C6 Bank");
@@ -186,16 +191,31 @@ export default function DashboardPage() {
     leticiaValorReal: resLeticia.liquidoFolha,
   };
 
-  const salarioVictorFinal = contrachequeMes.victorConfirmado
-    ? contrachequeMes.victorValorReal + (salVictor.incluirValeRefeicao ? resVictor.valeRefeicaoIndenizatorio : 0) + resVictor.valorDiarias
-    : resVictor.totalDisponivelMes;
+  const victorGanhosExtras =
+    contrachequeMes.victorExtras?.reduce((acc, it) => acc + it.valor, 0) ||
+    contrachequeMes.victorGanhosExtras ||
+    0;
+  const leticiaGanhosExtras =
+    contrachequeMes.leticiaExtras?.reduce((acc, it) => acc + it.valor, 0) ||
+    contrachequeMes.leticiaGanhosExtras ||
+    0;
 
-  const salarioLeticiaFinal = contrachequeMes.leticiaConfirmada
-    ? contrachequeMes.leticiaValorReal + (salLeticia.incluirValeRefeicao ? resLeticia.valeRefeicaoIndenizatorio : 0) + resLeticia.valorDiarias
-    : resLeticia.totalDisponivelMes;
+  const salarioVictorFinal =
+    (contrachequeMes.victorConfirmado
+      ? contrachequeMes.victorValorReal +
+        (salVictor.incluirValeRefeicao ? resVictor.valeRefeicaoIndenizatorio : 0) +
+        resVictor.valorDiarias
+      : resVictor.totalDisponivelMes) + victorGanhosExtras;
+
+  const salarioLeticiaFinal =
+    (contrachequeMes.leticiaConfirmada
+      ? contrachequeMes.leticiaValorReal +
+        (salLeticia.incluirValeRefeicao ? resLeticia.valeRefeicaoIndenizatorio : 0) +
+        resLeticia.valorDiarias
+      : resLeticia.totalDisponivelMes) + leticiaGanhosExtras;
 
   const salarioLiquidoTotalCasal = salarioVictorFinal + salarioLeticiaFinal;
-  const salarioPrevistoTotalCasal = resVictor.totalDisponivelMes + resLeticia.totalDisponivelMes;
+  const salarioPrevistoTotalCasal = resVictor.totalDisponivelMes + resLeticia.totalDisponivelMes + victorGanhosExtras + leticiaGanhosExtras;
 
   // Handlers para confirmação de contracheques
   const confirmarContrachequeVictor = (valor: number) => {
@@ -252,6 +272,83 @@ export default function DashboardPage() {
         leticiaValorReal: resLeticia.liquidoFolha,
       },
     }));
+  };
+
+  // Handlers para rendimentos extras fora do contracheque
+  const adicionarExtraVictor = (descricao: string, valor: number) => {
+    setContracheques((prev) => {
+      const atual = prev[mesSelecionado] || {
+        victorConfirmado: false,
+        victorValorReal: resVictor.liquidoFolha,
+        leticiaConfirmada: false,
+        leticiaValorReal: resLeticia.liquidoFolha,
+      };
+      const extras = [...(atual.victorExtras || []), { id: Date.now().toString(), descricao, valor }];
+      const totalExtras = extras.reduce((acc, it) => acc + it.valor, 0);
+      return {
+        ...prev,
+        [mesSelecionado]: {
+          ...atual,
+          victorExtras: extras,
+          victorGanhosExtras: totalExtras,
+        },
+      };
+    });
+  };
+
+  const removerExtraVictor = (id: string) => {
+    setContracheques((prev) => {
+      const atual = prev[mesSelecionado];
+      if (!atual) return prev;
+      const extras = (atual.victorExtras || []).filter((it) => it.id !== id);
+      const totalExtras = extras.reduce((acc, it) => acc + it.valor, 0);
+      return {
+        ...prev,
+        [mesSelecionado]: {
+          ...atual,
+          victorExtras: extras,
+          victorGanhosExtras: totalExtras,
+        },
+      };
+    });
+  };
+
+  const adicionarExtraLeticia = (descricao: string, valor: number) => {
+    setContracheques((prev) => {
+      const atual = prev[mesSelecionado] || {
+        victorConfirmado: false,
+        victorValorReal: resVictor.liquidoFolha,
+        leticiaConfirmada: false,
+        leticiaValorReal: resLeticia.liquidoFolha,
+      };
+      const extras = [...(atual.leticiaExtras || []), { id: Date.now().toString(), descricao, valor }];
+      const totalExtras = extras.reduce((acc, it) => acc + it.valor, 0);
+      return {
+        ...prev,
+        [mesSelecionado]: {
+          ...atual,
+          leticiaExtras: extras,
+          leticiaGanhosExtras: totalExtras,
+        },
+      };
+    });
+  };
+
+  const removerExtraLeticia = (id: string) => {
+    setContracheques((prev) => {
+      const atual = prev[mesSelecionado];
+      if (!atual) return prev;
+      const extras = (atual.leticiaExtras || []).filter((it) => it.id !== id);
+      const totalExtras = extras.reduce((acc, it) => acc + it.valor, 0);
+      return {
+        ...prev,
+        [mesSelecionado]: {
+          ...atual,
+          leticiaExtras: extras,
+          leticiaGanhosExtras: totalExtras,
+        },
+      };
+    });
   };
 
   // Cálculos de Poupança (Confirmado vs Previsão Futura)
@@ -458,22 +555,69 @@ export default function DashboardPage() {
     if (!novaDescricao || isNaN(val) || val <= 0) return;
 
     const mesDaConta = novoVencimento ? novoVencimento.slice(0, 7) : mesSelecionado;
+    const diaVencimento = novoVencimento ? novoVencimento.slice(8, 10) : "02";
+
+    let descFinal = novaDescricao.trim();
+    if (contaParcelada) {
+      const cleanDesc = descFinal.replace(/\s*\(\d+\/\d+\)/, "").trim();
+      descFinal = `${cleanDesc} (${parcelaAtual}/${totalParcelas})`;
+    }
 
     const nova: ContaCasa = {
       id: Date.now().toString(),
       mesAno: mesDaConta,
-      descricao: novaDescricao,
+      descricao: descFinal,
       categoria: novaCategoria,
       valor: val,
-      vencimento: novoVencimento || `${mesDaConta}-10`,
+      vencimento: novoVencimento || `${mesDaConta}-${diaVencimento}`,
       quemPaga: novoPagador,
       pago: false,
       status: "CONFIRMADO",
+      parcelada: contaParcelada,
+      parcelaAtual: contaParcelada ? parcelaAtual : undefined,
+      totalParcelas: contaParcelada ? totalParcelas : undefined,
     };
-    setContasCasa((prev) => [nova, ...prev]);
+
+    const contasNovas: ContaCasa[] = [nova];
+
+    // Se for boleto/conta parcelada, cria automaticamente as parcelas futuras para os meses subsequentes
+    if (contaParcelada && totalParcelas > parcelaAtual) {
+      const baseYear = parseInt(mesDaConta.slice(0, 4), 10);
+      const baseMonth = parseInt(mesDaConta.slice(5, 7), 10);
+      const cleanDesc = novaDescricao.replace(/\s*\(\d+\/\d+\)/, "").trim();
+
+      for (let p = parcelaAtual + 1; p <= totalParcelas; p++) {
+        const offset = p - parcelaAtual;
+        const totalMeses = baseMonth - 1 + offset;
+        const futYear = baseYear + Math.floor(totalMeses / 12);
+        const futMonth = (totalMeses % 12) + 1;
+        const futMesAno = `${futYear}-${String(futMonth).padStart(2, "0")}`;
+        const futVencimento = `${futMesAno}-${diaVencimento}`;
+
+        contasNovas.push({
+          id: `parc-${Date.now()}-${p}`,
+          mesAno: futMesAno,
+          descricao: `${cleanDesc} (${p}/${totalParcelas})`,
+          categoria: novaCategoria,
+          valor: val,
+          vencimento: futVencimento,
+          quemPaga: novoPagador,
+          pago: false,
+          status: "PREVISTO",
+          parcelada: true,
+          parcelaAtual: p,
+          totalParcelas: totalParcelas,
+        });
+      }
+    }
+
+    setContasCasa((prev) => [...contasNovas, ...prev]);
     setNovaDescricao("");
     setNovoValor("");
     setNovoVencimento("");
+    setContaParcelada(false);
+    setParcelaAtual(1);
+    setTotalParcelas(12);
     setStatusPDF("");
     setModalAberto(false);
 
@@ -562,10 +706,20 @@ export default function DashboardPage() {
         const banco = dados.bancoCartao;
         const compras = parsearLinhasFatura(dados.textoCompleto, banco, mesSelecionado);
         if (compras.length > 0) {
-          const comIds: CompraCartao[] = compras.map((item, idx) => ({
-            ...item,
-            id: `${Date.now()}-${idx}`,
-          }));
+          const comIds: CompraCartao[] = compras.map((item, idx) => {
+            const jaExistia = comprasCartao.some(
+              (c) =>
+                c.banco === banco &&
+                c.mesFatura < mesSelecionado &&
+                c.descricao.toLowerCase().trim() === item.descricao.toLowerCase().trim()
+            );
+            const isNova = !jaExistia || (item.parcelaInfo && item.parcelaInfo.startsWith("1/"));
+            return {
+              ...item,
+              id: `${Date.now()}-${idx}`,
+              isNova: Boolean(isNova),
+            };
+          });
           setComprasCartao((prev) => [...comIds, ...prev]);
           setStatusPDF(
             `✓ Fatura de Cartão detectada: ${dados.descricao} • R$ ${dados.valor.toFixed(2)} • Vencimento: ${dados.vencimento} • ${compras.length} compras importadas para a Aba Cartões!`
@@ -650,7 +804,11 @@ export default function DashboardPage() {
   };
 
   const alterarPagadorCompra = (id: string, novoPagador: Pagador) => {
-    setComprasCartao((prev) => prev.map((c) => (c.id === id ? { ...c, quemPaga: novoPagador } : c)));
+    setComprasCartao((prev) =>
+      prev.map((c) =>
+        c.id === id ? { ...c, quemPaga: novoPagador, isNova: false, pagadorDefinido: true } : c
+      )
+    );
   };
 
   const exportarBackup = () => {
@@ -1272,7 +1430,7 @@ export default function DashboardPage() {
         )}
 
         {/* ========================================================= */}
-        {/* ABA 3: SALÁRIOS (DIVISÃO EM 2 LADOS: VICTOR & LETÍCIA)     */}
+        {/* ABA 3: SALÁRIOS (VICTOR ROQUE & LETÍCIA RIBEIRO)          */}
         {/* ========================================================= */}
         {aba === "salarios" && (
           <div className="space-y-6">
@@ -1285,7 +1443,7 @@ export default function DashboardPage() {
                   </span>
                 </div>
                 <p className="text-xs text-slate-400 mt-1">
-                  Lado Esquerdo: Victor (CBMRS) • Lado Direito: Letícia (BMRS). Simule as regras salariais e confirme com o contracheque oficial do mês.
+                  Victor Roque • Letícia Ribeiro. Simule as regras salariais, adicione rendimentos extras e confirme com o contracheque oficial do mês.
                 </p>
               </div>
 
@@ -1300,11 +1458,11 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            {/* Divisão da tela em 2 lados: Esquerdo Victor / Direito Letícia */}
+            {/* Divisão da tela: Victor Roque & Letícia Ribeiro */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
-              {/* Lado Esquerdo: Victor (CBMRS) */}
+              {/* Victor Roque */}
               <SalarioCard
-                titulo="Lado Esquerdo: Victor Roque — Sd CBMRS"
+                titulo="Victor Roque"
                 cor="blue"
                 params={salVictor}
                 onChange={setSalVictor}
@@ -1314,11 +1472,14 @@ export default function DashboardPage() {
                 valorRealContracheque={contrachequeMes.victorValorReal}
                 onConfirmarContracheque={confirmarContrachequeVictor}
                 onReverterContracheque={reverterContrachequeVictor}
+                rendimentosExtras={contrachequeMes.victorExtras || []}
+                onAdicionarExtra={adicionarExtraVictor}
+                onRemoverExtra={removerExtraVictor}
               />
 
-              {/* Lado Direito: Letícia (BMRS) */}
+              {/* Letícia Ribeiro */}
               <SalarioCard
-                titulo="Lado Direito: Letícia Ribeiro — Sd BMRS"
+                titulo="Letícia Ribeiro"
                 cor="purple"
                 params={salLeticia}
                 onChange={setSalLeticia}
@@ -1328,6 +1489,9 @@ export default function DashboardPage() {
                 valorRealContracheque={contrachequeMes.leticiaValorReal}
                 onConfirmarContracheque={confirmarContrachequeLeticia}
                 onReverterContracheque={reverterContrachequeLeticia}
+                rendimentosExtras={contrachequeMes.leticiaExtras || []}
+                onAdicionarExtra={adicionarExtraLeticia}
+                onRemoverExtra={removerExtraLeticia}
               />
             </div>
           </div>
@@ -1445,11 +1609,23 @@ export default function DashboardPage() {
                   </div>
                 </div>
 
+                {/* Alerta de Novas Compras Pendentes de Definição de Pagador */}
+                {comprasCartao.filter((c) => c.banco === bancoFiltro && c.mesFatura === mesSelecionado && c.isNova).length > 0 && (
+                  <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-300 text-rose-900 flex items-center justify-between gap-3 text-xs">
+                    <div className="flex items-center gap-2 font-medium">
+                      <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                      <span>
+                        Atenção: <strong>{comprasCartao.filter((c) => c.banco === bancoFiltro && c.mesFatura === mesSelecionado && c.isNova).length} nova(s) compra(s) detectada(s)</strong> nesta fatura em relação ao mês anterior (destacadas em vermelho). Clique em <strong>VIC</strong>, <strong>LE</strong> ou <strong>DIV</strong> para definir quem paga.
+                      </span>
+                    </div>
+                  </div>
+                )}
+
                 {/* Tabela de Lançamentos do Cartão Selecionado */}
                 <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
                   <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
                     <h3 className="font-bold text-slate-800">Lançamentos — {bancoFiltro} ({mesSelecionado})</h3>
-                    <span className="text-xs text-slate-500">Clique em VIC / LE / DIV para recalcular o rateio na hora</span>
+                    <span className="text-xs text-slate-500">Clique em VIC / LE / DIV para definir quem paga e recalcular na hora</span>
                   </div>
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm text-left">
@@ -1465,51 +1641,69 @@ export default function DashboardPage() {
                       <tbody className="divide-y divide-slate-100">
                         {comprasCartao
                           .filter((c) => c.banco === bancoFiltro && c.mesFatura === mesSelecionado)
-                          .map((compra) => (
-                            <tr key={compra.id} className="hover:bg-slate-50">
-                              <td className="px-6 py-3 text-slate-500 whitespace-nowrap">{compra.dataCompra}</td>
-                              <td className="px-6 py-3 font-medium text-slate-800">
-                                {compra.descricao}{" "}
-                                {compra.parcelaInfo && (
-                                  <span className="ml-2 text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">
-                                    {compra.parcelaInfo}
-                                  </span>
-                                )}
-                              </td>
-                              <td className="px-6 py-3 font-bold text-slate-800 whitespace-nowrap">
-                                {formatarMoeda(compra.valor)}
-                              </td>
-                              <td className="px-6 py-3">
-                                <div className="inline-flex rounded-lg border border-slate-200 overflow-hidden">
-                                  {(["VIC", "LE", "DIV"] as Pagador[]).map((opcao) => (
-                                    <button
-                                      key={opcao}
-                                      onClick={() => alterarPagadorCompra(compra.id, opcao)}
-                                      className={`px-2.5 py-1 text-xs font-bold transition ${
-                                        compra.quemPaga === opcao
-                                          ? opcao === "VIC"
-                                            ? "bg-blue-600 text-white"
-                                            : opcao === "LE"
-                                            ? "bg-purple-600 text-white"
-                                            : "bg-amber-500 text-white"
-                                          : "bg-white text-slate-500 hover:bg-slate-100"
-                                      }`}
-                                    >
-                                      {opcao}
-                                    </button>
-                                  ))}
-                                </div>
-                              </td>
-                              <td className="px-6 py-3 text-right">
-                                <button
-                                  onClick={() => setComprasCartao((prev) => prev.filter((c) => c.id !== compra.id))}
-                                  className="text-slate-400 hover:text-rose-600"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </button>
-                              </td>
-                            </tr>
-                          ))}
+                          .map((compra) => {
+                            const isNova = Boolean(compra.isNova);
+                            return (
+                              <tr
+                                key={compra.id}
+                                className={`transition-colors ${
+                                  isNova
+                                    ? "bg-rose-50/90 hover:bg-rose-100/90 border-l-4 border-l-rose-500"
+                                    : "hover:bg-slate-50"
+                                }`}
+                              >
+                                <td className="px-6 py-3 text-slate-500 whitespace-nowrap">{compra.dataCompra}</td>
+                                <td className="px-6 py-3 font-medium text-slate-800">
+                                  <div className="flex flex-wrap items-center gap-1.5">
+                                    <span>{compra.descricao}</span>
+                                    {compra.parcelaInfo && (
+                                      <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-semibold">
+                                        {compra.parcelaInfo}
+                                      </span>
+                                    )}
+                                    {isNova && (
+                                      <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-rose-600 text-white animate-pulse">
+                                        Nova Compra • Definir Quem Paga
+                                      </span>
+                                    )}
+                                  </div>
+                                </td>
+                                <td className="px-6 py-3 font-bold text-slate-800 whitespace-nowrap">
+                                  {formatarMoeda(compra.valor)}
+                                </td>
+                                <td className="px-6 py-3">
+                                  <div className="inline-flex rounded-lg border border-slate-200 overflow-hidden shadow-sm">
+                                    {(["VIC", "LE", "DIV"] as Pagador[]).map((opcao) => (
+                                      <button
+                                        key={opcao}
+                                        onClick={() => alterarPagadorCompra(compra.id, opcao)}
+                                        className={`px-2.5 py-1 text-xs font-bold transition ${
+                                          compra.quemPaga === opcao
+                                            ? opcao === "VIC"
+                                              ? "bg-blue-600 text-white"
+                                              : opcao === "LE"
+                                              ? "bg-purple-600 text-white"
+                                              : "bg-amber-500 text-white"
+                                            : "bg-white text-slate-500 hover:bg-slate-100"
+                                        }`}
+                                      >
+                                        {opcao}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </td>
+                                <td className="px-6 py-3 text-right">
+                                  <button
+                                    onClick={() => setComprasCartao((prev) => prev.filter((c) => c.id !== compra.id))}
+                                    className="text-slate-400 hover:text-rose-600 p-1"
+                                    title="Excluir lançamento"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })}
                       </tbody>
                     </table>
                   </div>
@@ -2620,6 +2814,49 @@ export default function DashboardPage() {
                     <option value="LE">100% Letícia</option>
                   </select>
                 </div>
+
+                {/* Opção Conta / Boleto Parcelado (Acordo Nubank, Empréstimo, Carnê) */}
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                  <label className="flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={contaParcelada}
+                      onChange={(e) => setContaParcelada(e.target.checked)}
+                      className="w-4 h-4 accent-emerald-600 rounded"
+                    />
+                    <span>Conta / Boleto Parcelado (Acordo Nubank, Empréstimo, Carnê)</span>
+                  </label>
+                  {contaParcelada && (
+                    <div className="grid grid-cols-2 gap-3 pt-1">
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-500 mb-1">
+                          Parcela Atual
+                        </label>
+                        <input
+                          type="number"
+                          min={1}
+                          max={totalParcelas}
+                          value={parcelaAtual}
+                          onChange={(e) => setParcelaAtual(parseInt(e.target.value) || 1)}
+                          className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-bold focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-500 mb-1">
+                          Total de Parcelas
+                        </label>
+                        <input
+                          type="number"
+                          min={parcelaAtual}
+                          value={totalParcelas}
+                          onChange={(e) => setTotalParcelas(parseInt(e.target.value) || 12)}
+                          className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-bold focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 <div className="pt-2">
                   <button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl shadow-md shadow-emerald-600/20 transition">
                     Salvar Conta no Mês
@@ -2770,7 +3007,7 @@ export default function DashboardPage() {
   );
 }
 
-// Componente Reutilizável da Aba 3 (Contracheque Militar RS)
+// Componente Reutilizável da Aba 3 (Salários & Rendimentos)
 function SalarioCard({
   titulo,
   cor,
@@ -2782,6 +3019,9 @@ function SalarioCard({
   valorRealContracheque,
   onConfirmarContracheque,
   onReverterContracheque,
+  rendimentosExtras = [],
+  onAdicionarExtra,
+  onRemoverExtra,
 }: {
   titulo: string;
   cor: "blue" | "purple";
@@ -2793,10 +3033,17 @@ function SalarioCard({
   valorRealContracheque: number;
   onConfirmarContracheque: (valor: number) => void;
   onReverterContracheque: () => void;
+  rendimentosExtras?: RendimentoExtraItem[];
+  onAdicionarExtra?: (descricao: string, valor: number) => void;
+  onRemoverExtra?: (id: string) => void;
 }) {
   const badgeColor = cor === "blue" ? "bg-blue-600" : "bg-purple-600";
   const [inputVal, setInputVal] = useState<string>(() => resultado.liquidoFolha.toFixed(2));
   const [statusPDFContracheque, setStatusPDFContracheque] = useState<string>("");
+  const [novoExtraDesc, setNovoExtraDesc] = useState("");
+  const [novoExtraValor, setNovoExtraValor] = useState("");
+
+  const totalGanhosExtras = rendimentosExtras.reduce((acc, it) => acc + it.valor, 0);
 
   // Sincroniza o valor sugerido se mudar a simulação e não estiver confirmado
   useEffect(() => {
@@ -3014,7 +3261,7 @@ function SalarioCard({
               )}
               <div className="flex justify-between font-bold text-slate-900 pt-1 border-t border-slate-200">
                 <span>Total Disponível no Mês:</span>
-                <span>{formatarMoeda(resultado.totalDisponivelMes)}</span>
+                <span>{formatarMoeda(resultado.totalDisponivelMes + totalGanhosExtras)}</span>
               </div>
             </div>
           )}
@@ -3051,7 +3298,7 @@ function SalarioCard({
                   Diferença: {formatarMoeda(valorRealContracheque - resultado.liquidoFolha)}
                 </span>
               </div>
-              {(params.incluirValeRefeicao || resultado.valorDiarias > 0) && (
+              {(params.incluirValeRefeicao || resultado.valorDiarias > 0 || totalGanhosExtras > 0) && (
                 <div className="text-[11px] text-slate-600 pt-1.5 border-t border-emerald-200/50 flex flex-col gap-0.5">
                   <div className="flex justify-between">
                     <span>Líquido Contracheque:</span>
@@ -3069,13 +3316,20 @@ function SalarioCard({
                       <span className="font-semibold">+{formatarMoeda(resultado.valorDiarias)}</span>
                     </div>
                   )}
+                  {totalGanhosExtras > 0 && (
+                    <div className="flex justify-between text-emerald-800">
+                      <span>(+) Ganhos Extras Fora Contracheque:</span>
+                      <span className="font-semibold">+{formatarMoeda(totalGanhosExtras)}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between font-bold text-slate-900 pt-1 border-t border-emerald-200/80">
                     <span>Total Disponível no Mês:</span>
                     <span>
                       {formatarMoeda(
                         valorRealContracheque +
                           (params.incluirValeRefeicao ? resultado.valeRefeicaoIndenizatorio : 0) +
-                          resultado.valorDiarias
+                          resultado.valorDiarias +
+                          totalGanhosExtras
                       )}
                     </span>
                   </div>
@@ -3154,6 +3408,77 @@ function SalarioCard({
                   Confirmar Líquido
                 </button>
               </div>
+            </div>
+          )}
+        </div>
+
+        {/* Rendimentos Extras Fora do Contracheque (Bicos, Vendas, Serviços, etc.) */}
+        <div className="mt-4 p-4 rounded-xl border border-slate-200 bg-slate-50 space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+              <PlusCircle className="w-3.5 h-3.5 text-emerald-600" />
+              Ganhos Extras Fora do Contracheque
+            </span>
+            <span className="text-xs font-black text-emerald-600">
+              Total: {formatarMoeda(totalGanhosExtras)}
+            </span>
+          </div>
+          <p className="text-[11px] text-slate-500">
+            Adicione valores recebidos fora da folha de pagamento (bicos, plantões adicionais, vendas, freelas) para somar ao total disponível do mês:
+          </p>
+
+          <div className="flex gap-2">
+            <input
+              type="text"
+              placeholder="Descrição (ex: Plantão extra, Venda)"
+              value={novoExtraDesc}
+              onChange={(e) => setNovoExtraDesc(e.target.value)}
+              className="flex-1 border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+            />
+            <input
+              type="number"
+              step="0.01"
+              placeholder="R$ 0,00"
+              value={novoExtraValor}
+              onChange={(e) => setNovoExtraValor(e.target.value)}
+              className="w-24 border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-semibold bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+            />
+            <button
+              type="button"
+              onClick={() => {
+                const val = parseFloat(novoExtraValor.replace(",", "."));
+                if (novoExtraDesc.trim() && !isNaN(val) && val > 0 && onAdicionarExtra) {
+                  onAdicionarExtra(novoExtraDesc.trim(), val);
+                  setNovoExtraDesc("");
+                  setNovoExtraValor("");
+                }
+              }}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-3 py-1.5 rounded-lg transition shadow-sm whitespace-nowrap"
+            >
+              + Adicionar
+            </button>
+          </div>
+
+          {rendimentosExtras && rendimentosExtras.length > 0 && (
+            <div className="space-y-1.5 pt-1">
+              {rendimentosExtras.map((extra) => (
+                <div key={extra.id} className="flex items-center justify-between p-2 rounded-lg bg-white border border-slate-200 text-xs shadow-sm">
+                  <span className="font-medium text-slate-700">{extra.descricao}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-emerald-600">+ {formatarMoeda(extra.valor)}</span>
+                    {onRemoverExtra && (
+                      <button
+                        type="button"
+                        onClick={() => onRemoverExtra(extra.id)}
+                        className="text-slate-400 hover:text-rose-600 p-0.5 font-bold"
+                        title="Remover ganho extra"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </div>

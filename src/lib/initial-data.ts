@@ -45,6 +45,7 @@ export const INITIAL_CONTAS_CASA: ContaCasa[] = [
   { id: "c4", mesAno: "2026-11", descricao: "Água / Saneamento (Corsan)", categoria: "Água", valor: 90.00, vencimento: "2026-11-20", quemPaga: "DIV", pago: false, status: "CONFIRMADO", recorrente: true },
   { id: "c5", mesAno: "2026-11", descricao: "Parcela Financiamento Carro", categoria: "Carro", valor: 1100.00, vencimento: "2026-11-20", quemPaga: "DIV", pago: false, status: "CONFIRMADO", recorrente: true },
   { id: "c6", mesAno: "2026-11", descricao: "Telefone Celular Vivo", categoria: "Telefone", valor: 64.00, vencimento: "2026-11-10", quemPaga: "VIC", pago: true, status: "CONFIRMADO", recorrente: true },
+  { id: "c-acordo-nubank-nov", mesAno: "2026-11", descricao: "Acordo Nubank (5/25)", categoria: "Outros", valor: 124.31, vencimento: "2026-11-02", quemPaga: "VIC", pago: true, status: "CONFIRMADO", recorrente: true, parcelada: true, parcelaAtual: 5, totalParcelas: 25 },
 
   // ==========================================
   // DEZEMBRO / 2026 (Novas Contas Fixas em Vigor)
@@ -54,6 +55,7 @@ export const INITIAL_CONTAS_CASA: ContaCasa[] = [
   { id: "c-dez-internet", mesAno: "2026-12", descricao: "Internet Residencial (Vero)", categoria: "Internet", valor: 135.00, vencimento: "2026-12-15", quemPaga: "DIV", pago: false, status: "PREVISTO", recorrente: true },
   { id: "c-dez-luz", mesAno: "2026-12", descricao: "Energia Elétrica (Luz)", categoria: "Luz", valor: 350.00, vencimento: "2026-12-20", quemPaga: "DIV", pago: false, status: "PREVISTO", recorrente: true },
   { id: "c-dez-tel", mesAno: "2026-12", descricao: "Telefone Celular Vivo", categoria: "Telefone", valor: 64.00, vencimento: "2026-12-10", quemPaga: "VIC", pago: false, status: "PREVISTO", recorrente: true },
+  { id: "c-acordo-nubank-dez", mesAno: "2026-12", descricao: "Acordo Nubank (6/25)", categoria: "Outros", valor: 124.31, vencimento: "2026-12-02", quemPaga: "VIC", pago: false, status: "PREVISTO", recorrente: true, parcelada: true, parcelaAtual: 6, totalParcelas: 25 },
 
   // ==========================================
   // JANEIRO / 2027 (Entrada do Carro R$ 1.750 em 12/01/2027)
@@ -64,6 +66,7 @@ export const INITIAL_CONTAS_CASA: ContaCasa[] = [
   { id: "c-jan-internet", mesAno: "2027-01", descricao: "Internet Residencial (Vero)", categoria: "Internet", valor: 135.00, vencimento: "2027-01-15", quemPaga: "DIV", pago: false, status: "PREVISTO", recorrente: true },
   { id: "c-jan-luz", mesAno: "2027-01", descricao: "Energia Elétrica (Luz)", categoria: "Luz", valor: 350.00, vencimento: "2027-01-20", quemPaga: "DIV", pago: false, status: "PREVISTO", recorrente: true },
   { id: "c-jan-tel", mesAno: "2027-01", descricao: "Telefone Celular Vivo", categoria: "Telefone", valor: 64.00, vencimento: "2027-01-10", quemPaga: "VIC", pago: false, status: "PREVISTO", recorrente: true },
+  { id: "c-acordo-nubank-jan", mesAno: "2027-01", descricao: "Acordo Nubank (7/25)", categoria: "Outros", valor: 124.31, vencimento: "2027-01-02", quemPaga: "VIC", pago: false, status: "PREVISTO", recorrente: true, parcelada: true, parcelaAtual: 7, totalParcelas: 25 },
 ];
 
 export const INITIAL_POUPANCA: MovimentacaoPoupanca[] = [
@@ -105,7 +108,7 @@ export const INITIAL_COMPRAS_CARTAO: CompraCartao[] = [
   { id: "c6-24", mesFatura: "2026-11", banco: "C6 Bank", titularCartao: "Victor Roque", dataCompra: "29/09/2026", descricao: "IFD*VERIDIANA MARQUES", parcelaInfo: undefined, valor: 39.20, quemPaga: "DIV" },
   { id: "c6-25", mesFatura: "2026-11", banco: "C6 Bank", titularCartao: "Victor Roque", dataCompra: "04/10/2026", descricao: "AMAZON BR *AMAZON BR", parcelaInfo: undefined, valor: 89.99, quemPaga: "VIC" },
   { id: "c6-26", mesFatura: "2026-11", banco: "C6 Bank", titularCartao: "Victor Roque", dataCompra: "04/10/2026", descricao: "RAIA3331", parcelaInfo: undefined, valor: 23.99, quemPaga: "VIC" },
-  { id: "c6-27", mesFatura: "2026-11", banco: "C6 Bank", titularCartao: "Victor Roque", dataCompra: "04/10/2026", descricao: "EBN *PLAYSTATION", parcelaInfo: "1/4", valor: 87.25, quemPaga: "VIC" },
+  { id: "c6-27", mesFatura: "2026-11", banco: "C6 Bank", titularCartao: "Victor Roque", dataCompra: "04/10/2026", descricao: "EBN *PLAYSTATION", parcelaInfo: "1/4", valor: 87.25, quemPaga: "VIC", isNova: true },
   { id: "c6-28", mesFatura: "2026-11", banco: "C6 Bank", titularCartao: "Victor Roque", dataCompra: "05/10/2026", descricao: "APPLE.COM/BILL", parcelaInfo: undefined, valor: 64.90, quemPaga: "DIV" },
   { id: "c6-29", mesFatura: "2026-11", banco: "C6 Bank", titularCartao: "Victor Roque", dataCompra: "05/10/2026", descricao: "IFD*IFOOD CLUB", parcelaInfo: undefined, valor: 7.95, quemPaga: "VIC" },
   { id: "c6-30", mesFatura: "2026-11", banco: "C6 Bank", titularCartao: "Victor Roque", dataCompra: "11/10/2026", descricao: "UBER *ONE MEMBERSHIP U", parcelaInfo: undefined, valor: 12.90, quemPaga: "DIV" },
@@ -134,7 +137,7 @@ export const INITIAL_COMPRAS_CARTAO: CompraCartao[] = [
   { id: "sic-17", mesFatura: "2026-11", banco: "Sicredi", titularCartao: "Cartão Físico Victor", dataCompra: "25/09/2026", descricao: "Serdil", parcelaInfo: undefined, valor: 49.43, quemPaga: "VIC" },
   { id: "sic-18", mesFatura: "2026-11", banco: "Sicredi", titularCartao: "Cartão Físico Letícia", dataCompra: "26/09/2026", descricao: "Embaixador Rod Poa", parcelaInfo: undefined, valor: 111.95, quemPaga: "LE" },
   { id: "sic-19", mesFatura: "2026-11", banco: "Sicredi", titularCartao: "Cartão Físico Letícia", dataCompra: "26/09/2026", descricao: "Paradouro Grill", parcelaInfo: undefined, valor: 38.00, quemPaga: "DIV" },
-  { id: "sic-20", mesFatura: "2026-11", banco: "Sicredi", titularCartao: "Cartão Virtual Letícia", dataCompra: "27/09/2026", descricao: "Jaqueline Peter Cas", parcelaInfo: "1/2", valor: 74.95, quemPaga: "LE" },
+  { id: "sic-20", mesFatura: "2026-11", banco: "Sicredi", titularCartao: "Cartão Virtual Letícia", dataCompra: "27/09/2026", descricao: "Jaqueline Peter Cas", parcelaInfo: "1/2", valor: 74.95, quemPaga: "LE", isNova: true },
   { id: "sic-21", mesFatura: "2026-11", banco: "Sicredi", titularCartao: "Cartão Físico Letícia", dataCompra: "28/09/2026", descricao: "Supermecado Dalpiaz", parcelaInfo: undefined, valor: 32.64, quemPaga: "DIV" },
   { id: "sic-22", mesFatura: "2026-11", banco: "Sicredi", titularCartao: "Cartão Físico Letícia", dataCompra: "01/10/2026", descricao: "Comercial Samy Ltda", parcelaInfo: undefined, valor: 235.57, quemPaga: "DIV" },
   { id: "sic-23", mesFatura: "2026-11", banco: "Sicredi", titularCartao: "Cartão Físico Letícia", dataCompra: "02/10/2026", descricao: "Supermercado Asun", parcelaInfo: undefined, valor: 120.94, quemPaga: "DIV" },

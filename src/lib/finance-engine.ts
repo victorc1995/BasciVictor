@@ -12,6 +12,9 @@ export interface ContaCasa {
   pago: boolean;
   status?: "CONFIRMADO" | "PREVISTO";
   recorrente?: boolean;
+  parcelada?: boolean;
+  parcelaAtual?: number;
+  totalParcelas?: number;
 }
 
 export interface MovimentacaoPoupanca {
@@ -34,6 +37,8 @@ export interface CompraCartao {
   parcelaInfo?: string;
   valor: number;
   quemPaga: Pagador;
+  isNova?: boolean;
+  pagadorDefinido?: boolean;
 }
 
 export interface ParametrosSalario {
@@ -185,11 +190,21 @@ export function formatarMoeda(valor: number): string {
   return valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
+export interface RendimentoExtraItem {
+  id: string;
+  descricao: string;
+  valor: number;
+}
+
 export interface ContrachequeConfirmadoMes {
   victorConfirmado: boolean;
   victorValorReal: number;
+  victorExtras?: RendimentoExtraItem[];
+  victorGanhosExtras?: number;
   leticiaConfirmada: boolean;
   leticiaValorReal: number;
+  leticiaExtras?: RendimentoExtraItem[];
+  leticiaGanhosExtras?: number;
 }
 
 export interface ProjecaoMesContas {
@@ -350,6 +365,36 @@ export function calcularProjecao6Meses(
       contasDoMes = [...mapeadas, ...extras];
     } else {
       contasDoMes = padraoMes;
+    }
+
+    // Projeta boletos parcelados (ex: Acordo Nubank) para os meses futuros
+    if (offset > 0) {
+      const contasBaseParceladas = contas.filter((c) => c.mesAno === mesBase && c.parcelada);
+      for (const cb of contasBaseParceladas) {
+        const atual = cb.parcelaAtual || 1;
+        const total = cb.totalParcelas || 1;
+        const parcelaFutura = atual + offset;
+        if (parcelaFutura <= total) {
+          const descBase = cb.descricao.replace(/\s*\(\d+\/\d+\)/, "").trim();
+          const jaExiste = contasDoMes.some((c) => c.descricao.toLowerCase().includes(descBase.toLowerCase()));
+          if (!jaExiste) {
+            contasDoMes.push({
+              id: `proj-parc-${cb.id}-${mesAlvo}`,
+              mesAno: mesAlvo,
+              descricao: `${descBase} (${parcelaFutura}/${total})`,
+              categoria: cb.categoria,
+              valor: cb.valor,
+              vencimento: `${mesAlvo}-${cb.vencimento.slice(8) || "02"}`,
+              quemPaga: cb.quemPaga,
+              pago: false,
+              status: "PREVISTO",
+              parcelada: true,
+              parcelaAtual: parcelaFutura,
+              totalParcelas: total,
+            });
+          }
+        }
+      }
     }
 
     const totalContasFixas = contasDoMes
