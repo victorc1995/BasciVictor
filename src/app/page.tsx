@@ -30,6 +30,9 @@ import {
   RefreshCw,
   RotateCcw,
   Calendar,
+  ChevronDown,
+  ChevronUp,
+  ArrowUpRight,
 } from "lucide-react";
 import {
   CartaoBanco,
@@ -148,6 +151,10 @@ export default function DashboardPage() {
   // Aba 5 Contas & Projeção 6 Meses
   const [mesVisualizadoContas, setMesVisualizadoContas] = useState<string>("2026-11");
   const [contasExcluidas, setContasExcluidas] = useState<string[]>([]);
+
+  // Aba 6: Projeção dos Próximos 6 Meses (Perfil e Mês Expandido)
+  const [visaoProjecao6M, setVisaoProjecao6M] = useState<"victor" | "casal" | "leticia">("victor");
+  const [mesExpandido6M, setMesExpandido6M] = useState<string | null>(null);
 
   // Modal / Edição de Contas Fixas
   const [contaEditando, setContaEditando] = useState<ContaCasa | null>(null);
@@ -767,6 +774,192 @@ export default function DashboardPage() {
     const found = projecao6Meses.find((p) => p.mesAno === mesSelecionado);
     return found || dadosMesVisualizado;
   }, [projecao6Meses, mesSelecionado, dadosMesVisualizado]);
+
+  // Projeção Completa dos Próximos 6 Meses com Salários e Comprometimento Detalhado (Aba 6)
+  const projecao6MesesCalculada = useMemo(() => {
+    return projecao6Meses.map((p) => {
+      const mesKey = p.mesAno;
+      const isAtual = mesKey === mesSelecionado;
+      const cc = contracheques[mesKey];
+
+      // Salário Victor
+      const vicConfirmado = !!cc?.victorConfirmado;
+      const vicParams = cc?.victorParams || salVictor;
+      const vicCalc = calcularContrachequeRS(vicParams);
+      const vicExtras = cc?.victorExtras?.reduce((acc, it) => acc + it.valor, 0) ?? (cc?.victorGanhosExtras || 0);
+
+      let salVic = 0;
+      let tagSalVic = "Previsão Simulador";
+      if (isAtual) {
+        salVic = salarioVictorFinal;
+        tagSalVic = vicConfirmado ? "Contracheque Oficial" : "Previsão Folha";
+      } else if (vicConfirmado && cc?.victorSalarioLiquidoFinal !== undefined) {
+        salVic = cc.victorSalarioLiquidoFinal;
+        tagSalVic = "Contracheque Oficial";
+      } else if (vicConfirmado) {
+        salVic =
+          cc.victorValorReal +
+          (vicParams.incluirValeRefeicao ? vicCalc.valeRefeicaoIndenizatorio : 0) +
+          vicCalc.valorDiarias +
+          vicExtras;
+        tagSalVic = "Contracheque Oficial";
+      } else {
+        salVic = vicCalc.totalDisponivelMes + vicExtras;
+        tagSalVic = cc?.victorParams ? "Simulação Mês" : "Previsão Folha";
+      }
+
+      // Salário Letícia
+      const letConfirmada = !!cc?.leticiaConfirmada;
+      const letParams = cc?.leticiaParams || salLeticia;
+      const letCalc = calcularContrachequeRS(letParams);
+      const letExtras = cc?.leticiaExtras?.reduce((acc, it) => acc + it.valor, 0) ?? (cc?.leticiaGanhosExtras || 0);
+
+      let salLet = 0;
+      let tagSalLet = "Previsão Simulador";
+      if (isAtual) {
+        salLet = salarioLeticiaFinal;
+        tagSalLet = letConfirmada ? "Contracheque Oficial" : "Previsão Folha";
+      } else if (letConfirmada && cc?.leticiaSalarioLiquidoFinal !== undefined) {
+        salLet = cc.leticiaSalarioLiquidoFinal;
+        tagSalLet = "Contracheque Oficial";
+      } else if (letConfirmada) {
+        salLet =
+          cc.leticiaValorReal +
+          (letParams.incluirValeRefeicao ? letCalc.valeRefeicaoIndenizatorio : 0) +
+          letCalc.valorDiarias +
+          letExtras;
+        tagSalLet = "Contracheque Oficial";
+      } else {
+        salLet = letCalc.totalDisponivelMes + letExtras;
+        tagSalLet = cc?.leticiaParams ? "Simulação Mês" : "Previsão Folha";
+      }
+
+      const rendaCasal = salVic + salLet;
+
+      // Gastos Victor
+      const contasVic = p.totalContasVictor;
+      const cartoesVic = p.totalParcelasVictor;
+      const totalComprometidoVic = p.totalGeralVictor;
+      const sobraVic = salVic - totalComprometidoVic;
+      const pctComprometidoVic = salVic > 0 ? (totalComprometidoVic / salVic) * 100 : 0;
+
+      // Gastos Letícia
+      const contasLet = p.totalContasLeticia;
+      const cartoesLet = p.totalParcelasLeticia;
+      const totalComprometidoLet = p.totalGeralLeticia;
+      const sobraLet = salLet - totalComprometidoLet;
+      const pctComprometidoLet = salLet > 0 ? (totalComprometidoLet / salLet) * 100 : 0;
+
+      // Gastos Casal
+      const contasCasal = p.totalContasFixas;
+      const cartoesCasal = p.totalFaturaC6 + p.totalFaturaSicredi;
+      const totalComprometidoCasal = p.totalGeral;
+      const sobraCasal = rendaCasal - totalComprometidoCasal;
+      const pctComprometidoCasal = rendaCasal > 0 ? (totalComprometidoCasal / rendaCasal) * 100 : 0;
+
+      return {
+        ...p,
+        isAtual,
+        // Victor
+        salVic,
+        tagSalVic,
+        vicConfirmado,
+        contasVic,
+        cartoesVic,
+        totalComprometidoVic,
+        sobraVic,
+        pctComprometidoVic,
+        // Letícia
+        salLet,
+        tagSalLet,
+        letConfirmada,
+        contasLet,
+        cartoesLet,
+        totalComprometidoLet,
+        sobraLet,
+        pctComprometidoLet,
+        // Casal
+        rendaCasal,
+        contasCasal,
+        cartoesCasal,
+        totalComprometidoCasal,
+        sobraCasal,
+        pctComprometidoCasal,
+      };
+    });
+  }, [
+    projecao6Meses,
+    mesSelecionado,
+    contracheques,
+    salVictor,
+    salLeticia,
+    salarioVictorFinal,
+    salarioLeticiaFinal,
+  ]);
+
+  // Métricas agregadas da Projeção dos Próximos 6 Meses conforme o perfil selecionado
+  const metricasProjecao6M = useMemo(() => {
+    if (projecao6MesesCalculada.length === 0) {
+      return {
+        mediaRenda: 0,
+        mediaComprometido: 0,
+        mediaSobra: 0,
+        mediaPct: 0,
+        mesMaiorSobra: null as any,
+        maiorSobraVal: 0,
+        mesMaiorComprometimento: null as any,
+        maiorPctVal: 0,
+      };
+    }
+
+    const n = projecao6MesesCalculada.length;
+    let somaRenda = 0;
+    let somaComprometido = 0;
+    let somaSobra = 0;
+
+    let mesMaiorSobra = projecao6MesesCalculada[0];
+    let maiorSobraVal = -Infinity;
+
+    let mesMaiorComprometimento = projecao6MesesCalculada[0];
+    let maiorPctVal = -Infinity;
+
+    projecao6MesesCalculada.forEach((m) => {
+      const renda = visaoProjecao6M === "victor" ? m.salVic : visaoProjecao6M === "leticia" ? m.salLet : m.rendaCasal;
+      const comp = visaoProjecao6M === "victor" ? m.totalComprometidoVic : visaoProjecao6M === "leticia" ? m.totalComprometidoLet : m.totalComprometidoCasal;
+      const sobra = visaoProjecao6M === "victor" ? m.sobraVic : visaoProjecao6M === "leticia" ? m.sobraLet : m.sobraCasal;
+      const pct = visaoProjecao6M === "victor" ? m.pctComprometidoVic : visaoProjecao6M === "leticia" ? m.pctComprometidoLet : m.pctComprometidoCasal;
+
+      somaRenda += renda;
+      somaComprometido += comp;
+      somaSobra += sobra;
+
+      if (sobra > maiorSobraVal) {
+        maiorSobraVal = sobra;
+        mesMaiorSobra = m;
+      }
+
+      if (pct > maiorPctVal) {
+        maiorPctVal = pct;
+        mesMaiorComprometimento = m;
+      }
+    });
+
+    const mediaRenda = somaRenda / n;
+    const mediaComprometido = somaComprometido / n;
+    const mediaSobra = somaSobra / n;
+    const mediaPct = mediaRenda > 0 ? (mediaComprometido / mediaRenda) * 100 : 0;
+
+    return {
+      mediaRenda,
+      mediaComprometido,
+      mediaSobra,
+      mediaPct,
+      mesMaiorSobra,
+      maiorSobraVal,
+      mesMaiorComprometimento,
+      maiorPctVal,
+    };
+  }, [projecao6MesesCalculada, visaoProjecao6M]);
 
   // Cálculos de Cartões no Mês Selecionado (Geral Casal)
   const resumoCartoesMes = useMemo(() => {
@@ -3426,371 +3619,535 @@ export default function DashboardPage() {
             </div>
 
             {/* ========================================================= */}
-            {/* 6º HISTÓRICO MENSAL DE SALÁRIOS LÍQUIDOS (VICTOR & LETÍCIA)  */}
+            {/* PROJEÇÃO DOS PRÓXIMOS 6 MESES (SALÁRIO X GASTOS)         */}
             {/* ========================================================= */}
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-              <div className="p-6 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white">
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden space-y-6 p-6">
+              {/* Header da Projeção com Seletor de Perfil */}
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-200 pb-5">
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="bg-emerald-500/20 text-emerald-300 text-xs font-extrabold px-2.5 py-0.5 rounded-full border border-emerald-500/30">
-                      6º Passo
-                    </span>
-                    <h3 className="font-bold text-base">Histórico Mensal de Salários Líquidos (Victor Roque & Letícia Roque)</h3>
+                    <TrendingUp className="w-5 h-5 text-emerald-600" />
+                    <h3 className="font-bold text-lg text-slate-900">
+                      Projeção dos Próximos 6 Meses: Salário Previsto x Gastos Comprometidos
+                    </h3>
                   </div>
-                  <p className="text-xs text-slate-400 mt-1">
-                    Histórico consolidado dos salários líquidos mês a mês, comparando valores oficiais confirmados via contracheque, diferenças do simulador e rendimentos extras.
+                  <p className="text-xs text-slate-500 mt-1">
+                    Preveja exatamente quanto você vai receber de salário e quanto já está comprometido (contas fixas, parcelas de cartões e novos compromissos) para cada mês.
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setAba("salarios")}
-                  className="text-xs font-bold bg-white/10 hover:bg-white/20 text-white px-3.5 py-1.5 rounded-xl border border-white/20 transition flex items-center gap-1.5 shrink-0"
-                >
-                  <Pencil className="w-3.5 h-3.5 text-emerald-400" />
-                  Gerenciar Salários
-                </button>
-              </div>
 
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs text-left">
-                  <thead className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200 uppercase tracking-wider text-[11px]">
-                    <tr>
-                      <th className="px-4 py-3">Mês / Ano</th>
-                      <th className="px-4 py-3 text-blue-900 bg-blue-50/50">Victor: Salário Líquido</th>
-                      <th className="px-4 py-3 text-blue-900 bg-blue-50/50">Victor: Status CC</th>
-                      <th className="px-4 py-3 text-purple-900 bg-purple-50/50">Letícia: Salário Líquido</th>
-                      <th className="px-4 py-3 text-purple-900 bg-purple-50/50">Letícia: Status CC</th>
-                      <th className="px-4 py-3 text-slate-900 bg-slate-100">Renda Familiar Líquida</th>
-                      <th className="px-4 py-3 text-emerald-900 bg-emerald-50">Status Geral</th>
-                      <th className="px-4 py-3 text-center">Ações</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 font-medium">
-                    {["2026-09", "2026-10", "2026-11", "2026-12", "2027-01", "2027-02", "2027-03", "2027-04"].map((mesKey) => {
-                      const isAtual = mesKey === mesSelecionado;
-                      const cc = contracheques[mesKey];
+                {/* Seletor de Perfil (Filtro para ver Victor, Casal ou Letícia) */}
+                <div className="flex items-center gap-1.5 bg-slate-100 p-1.5 rounded-xl border border-slate-200 self-start lg:self-auto">
+                  <button
+                    type="button"
+                    onClick={() => setVisaoProjecao6M("victor")}
+                    className={`px-3 py-1.5 text-xs font-bold rounded-lg transition flex items-center gap-1.5 ${
+                      visaoProjecao6M === "victor"
+                        ? "bg-blue-600 text-white shadow-sm"
+                        : "text-slate-600 hover:text-blue-700 hover:bg-slate-200/60"
+                    }`}
+                  >
+                    <ShieldCheck className="w-3.5 h-3.5" />
+                    Parte do Victor Roque
+                  </button>
 
-                      // Victor
-                      const vicConfirmado = cc?.victorConfirmado;
-                      const vicValor = vicConfirmado
-                        ? (cc.victorSalarioLiquidoFinal || (cc.victorValorReal + (salVictor.incluirValeRefeicao ? resVictor.valeRefeicaoIndenizatorio : 0) + (cc.victorGanhosExtras || 0)))
-                        : (resVictor.totalDisponivelMes + (cc?.victorGanhosExtras || 0));
-                      const vicDiff = cc?.victorDiferencaCC;
+                  <button
+                    type="button"
+                    onClick={() => setVisaoProjecao6M("casal")}
+                    className={`px-3 py-1.5 text-xs font-bold rounded-lg transition flex items-center gap-1.5 ${
+                      visaoProjecao6M === "casal"
+                        ? "bg-slate-900 text-white shadow-sm"
+                        : "text-slate-600 hover:text-slate-900 hover:bg-slate-200/60"
+                    }`}
+                  >
+                    <Users className="w-3.5 h-3.5" />
+                    Visão Geral Casal
+                  </button>
 
-                      // Letícia
-                      const letConfirmada = cc?.leticiaConfirmada;
-                      const letValor = letConfirmada
-                        ? (cc.leticiaSalarioLiquidoFinal || (cc.leticiaValorReal + (salLeticia.incluirValeRefeicao ? resLeticia.valeRefeicaoIndenizatorio : 0) + (cc.leticiaGanhosExtras || 0)))
-                        : (resLeticia.totalDisponivelMes + (cc?.leticiaGanhosExtras || 0));
-                      const letDiff = cc?.leticiaDiferencaCC;
-
-                      const totalCasal = vicValor + letValor;
-
-                      return (
-                        <tr
-                          key={mesKey}
-                          className={`hover:bg-slate-50 transition ${
-                            isAtual ? "bg-amber-50/40 font-semibold" : ""
-                          }`}
-                        >
-                          <td className="px-4 py-3.5 whitespace-nowrap">
-                            <span className="font-bold text-slate-900">{formatarMesAnoLabel(mesKey)}</span>
-                            {isAtual && (
-                              <span className="ml-1.5 text-[10px] bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded font-bold">
-                                Mês Ativo
-                              </span>
-                            )}
-                          </td>
-
-                          {/* Victor Salário */}
-                          <td className="px-4 py-3.5 whitespace-nowrap bg-blue-50/30">
-                            <span className="font-black text-blue-900 text-sm">{formatarMoeda(vicValor)}</span>
-                            {cc?.victorGanhosExtras && cc.victorGanhosExtras > 0 ? (
-                              <span className="block text-[10px] text-emerald-700 font-semibold">
-                                + {formatarMoeda(cc.victorGanhosExtras)} extras
-                              </span>
-                            ) : null}
-                          </td>
-
-                          {/* Victor Status */}
-                          <td className="px-4 py-3.5 whitespace-nowrap bg-blue-50/30">
-                            <span
-                              className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
-                                vicConfirmado
-                                  ? "bg-emerald-100 text-emerald-800 border-emerald-300"
-                                  : "bg-amber-100 text-amber-800 border-amber-300"
-                              }`}
-                            >
-                              {vicConfirmado ? "✓ Confirmado" : "⏳ Previsão"}
-                            </span>
-                            {vicDiff !== undefined && vicDiff !== 0 && (
-                              <span className={`block text-[10px] mt-0.5 font-bold ${vicDiff > 0 ? "text-emerald-700" : "text-rose-600"}`}>
-                                {vicDiff > 0 ? `+${formatarMoeda(vicDiff)} CC` : `${formatarMoeda(vicDiff)} CC`}
-                              </span>
-                            )}
-                          </td>
-
-                          {/* Letícia Salário */}
-                          <td className="px-4 py-3.5 whitespace-nowrap bg-purple-50/30">
-                            <span className="font-black text-purple-900 text-sm">{formatarMoeda(letValor)}</span>
-                            {cc?.leticiaGanhosExtras && cc.leticiaGanhosExtras > 0 ? (
-                              <span className="block text-[10px] text-emerald-700 font-semibold">
-                                + {formatarMoeda(cc.leticiaGanhosExtras)} extras
-                              </span>
-                            ) : null}
-                          </td>
-
-                          {/* Letícia Status */}
-                          <td className="px-4 py-3.5 whitespace-nowrap bg-purple-50/30">
-                            <span
-                              className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
-                                letConfirmada
-                                  ? "bg-emerald-100 text-emerald-800 border-emerald-300"
-                                  : "bg-amber-100 text-amber-800 border-amber-300"
-                              }`}
-                            >
-                              {letConfirmada ? "✓ Confirmada" : "⏳ Previsão"}
-                            </span>
-                            {letDiff !== undefined && letDiff !== 0 && (
-                              <span className={`block text-[10px] mt-0.5 font-bold ${letDiff > 0 ? "text-emerald-700" : "text-rose-600"}`}>
-                                {letDiff > 0 ? `+${formatarMoeda(letDiff)} CC` : `${formatarMoeda(letDiff)} CC`}
-                              </span>
-                            )}
-                          </td>
-
-                          {/* Renda Familiar */}
-                          <td className="px-4 py-3.5 whitespace-nowrap bg-slate-50 font-black text-slate-900 text-sm">
-                            {formatarMoeda(totalCasal)}
-                          </td>
-
-                          {/* Status Geral */}
-                          <td className="px-4 py-3.5 whitespace-nowrap bg-emerald-50/40">
-                            {vicConfirmado && letConfirmada ? (
-                              <span className="text-[11px] font-bold text-emerald-800 bg-emerald-100 border border-emerald-300 px-2 py-0.5 rounded-full inline-flex items-center gap-1">
-                                <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                                100% Confirmado
-                              </span>
-                            ) : vicConfirmado || letConfirmada ? (
-                              <span className="text-[11px] font-bold text-blue-800 bg-blue-100 border border-blue-300 px-2 py-0.5 rounded-full inline-flex items-center gap-1">
-                                ⏳ 1 Confirmado
-                              </span>
-                            ) : (
-                              <span className="text-[11px] font-bold text-amber-800 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded-full inline-flex items-center gap-1">
-                                ⏳ Previsão Folha
-                              </span>
-                            )}
-                          </td>
-
-                          {/* Ações */}
-                          <td className="px-4 py-3.5 whitespace-nowrap text-center">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                handleSelecionarMes(mesKey);
-                                setAba("salarios");
-                              }}
-                              className="px-2.5 py-1 text-xs font-bold text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-lg border border-blue-200 transition inline-flex items-center gap-1"
-                              title={`Abrir e ajustar salários de ${formatarMesAnoLabel(mesKey)}`}
-                            >
-                              <ExternalLink className="w-3 h-3" />
-                              Ver Mês
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            {/* ========================================================= */}
-            {/* SEÇÃO AO FIM DA PÁGINA: RESUMO DA PROJEÇÃO DOS PRÓXIMOS MESES */}
-            {/* ========================================================= */}
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-              <div className="p-6 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-900 text-white">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <TrendingUp className="w-5 h-5 text-emerald-400" />
-                    <h3 className="font-bold text-base">Resumo da Projeção dos Próximos Meses (DRE Familiar)</h3>
-                  </div>
-                  <p className="text-xs text-slate-400 mt-0.5">
-                    Visão projetada mês a mês separada para Victor e Letícia, antecipando receitas, contas fixas, parcelas de cartões e saldo livre.
-                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setVisaoProjecao6M("leticia")}
+                    className={`px-3 py-1.5 text-xs font-bold rounded-lg transition flex items-center gap-1.5 ${
+                      visaoProjecao6M === "leticia"
+                        ? "bg-purple-600 text-white shadow-sm"
+                        : "text-slate-600 hover:text-purple-700 hover:bg-slate-200/60"
+                    }`}
+                  >
+                    <ShieldCheck className="w-3.5 h-3.5" />
+                    Parte da Letícia Roque
+                  </button>
                 </div>
-                <span className="text-xs bg-white/10 px-3 py-1 rounded-full font-semibold border border-white/10">
-                  Próximos 6 Meses
-                </span>
               </div>
 
-              {/* Destaques das Regras Futuras */}
-              <div className="bg-slate-50 border-b border-slate-200 p-4 grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
-                <div className="flex items-start gap-2.5 bg-white p-3 rounded-xl border border-slate-200">
+              {/* Destaques das Regras e Marcos Futuros */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+                <div className="flex items-start gap-2.5 bg-amber-50/70 p-3.5 rounded-xl border border-amber-200">
                   <span className="text-base">💡</span>
                   <div>
-                    <strong className="text-slate-800 block">Dezembro/2026: Novas Contas Fixas</strong>
-                    <span className="text-slate-500">
+                    <strong className="text-amber-900 block font-bold">Dezembro/2026: Novas Contas Fixas</strong>
+                    <span className="text-amber-800">
                       Aluguel R$ 1.450 (dia 02) • Luz R$ 350 • Água R$ 120 • Internet R$ 135
                     </span>
                   </div>
                 </div>
 
-                <div className="flex items-start gap-2.5 bg-emerald-50 p-3 rounded-xl border border-emerald-200">
+                <div className="flex items-start gap-2.5 bg-emerald-50 p-3.5 rounded-xl border border-emerald-200">
                   <Car className="w-4 h-4 text-emerald-700 shrink-0 mt-0.5" />
                   <div>
-                    <strong className="text-emerald-900 block">Janeiro/2027: Parcela do Carro</strong>
+                    <strong className="text-emerald-900 block font-bold">Janeiro/2027: Parcela do Carro</strong>
                     <span className="text-emerald-700">
                       Início em 12/01/2027: R$ 1.750,00/mês (Dividido: R$ 875,00 Victor / R$ 875,00 Letícia)
                     </span>
                   </div>
                 </div>
 
-                <div className="flex items-start gap-2.5 bg-white p-3 rounded-xl border border-slate-200">
+                <div className="flex items-start gap-2.5 bg-blue-50 p-3.5 rounded-xl border border-blue-200">
                   <span className="text-base">📉</span>
                   <div>
-                    <strong className="text-slate-800 block">Redução de Parcelas de Cartão</strong>
-                    <span className="text-slate-500">
-                      Parcelas antigas são quitadas mês a mês, aliviando o orçamento familiar
+                    <strong className="text-blue-900 block font-bold">Redução Progressiva de Cartões</strong>
+                    <span className="text-blue-800">
+                      Parcelas antigas são quitadas mês a mês, aliviando o orçamento e aumentando a sobra livre
                     </span>
                   </div>
                 </div>
               </div>
 
-              {/* Tabela de Projeção Mês a Mês */}
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs text-left">
-                  <thead className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200 uppercase tracking-wider text-[11px]">
-                    <tr>
-                      <th className="px-4 py-3">Mês / Ano</th>
-                      <th className="px-4 py-3 text-blue-900 bg-blue-50/50">Victor: Salário</th>
-                      <th className="px-4 py-3 text-blue-900 bg-blue-50/50">Victor: Contas</th>
-                      <th className="px-4 py-3 text-blue-900 bg-blue-50/50">Victor: Saldo</th>
-                      <th className="px-4 py-3 text-purple-900 bg-purple-50/50">Letícia: Salário</th>
-                      <th className="px-4 py-3 text-purple-900 bg-purple-50/50">Letícia: Contas</th>
-                      <th className="px-4 py-3 text-purple-900 bg-purple-50/50">Letícia: Saldo</th>
-                      <th className="px-4 py-3 text-slate-900 bg-slate-100">Casal: Renda</th>
-                      <th className="px-4 py-3 text-slate-900 bg-slate-100">Casal: Contas</th>
-                      <th className="px-4 py-3 text-emerald-900 bg-emerald-50">Sobra Familiar</th>
-                      <th className="px-4 py-3">Destaques / Eventos</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 font-medium">
-                    {projecao6Meses.map((p) => {
-                      const isAtual = p.mesAno === mesSelecionado;
-                      const salVic = isAtual ? salarioVictorFinal : resVictor.liquidoFolha;
-                      const salLet = isAtual ? salarioLeticiaFinal : resLeticia.liquidoFolha;
-                      const saldoVic = salVic - p.totalGeralVictor;
-                      const saldoLet = salLet - p.totalGeralLeticia;
-                      const rendaCasal = salVic + salLet;
-                      const despesaCasal = p.totalGeral;
-                      const sobraCasal = rendaCasal - despesaCasal;
+              {/* Cards de Métricas Semestrais da Visão Selecionada */}
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                  <span className="text-[11px] font-semibold text-slate-500 uppercase block">
+                    {visaoProjecao6M === "victor" ? "Salário Médio Victor" : visaoProjecao6M === "leticia" ? "Salário Médio Letícia" : "Renda Média Familiar"}
+                  </span>
+                  <p className="text-xl font-black text-slate-900 mt-1">
+                    {formatarMoeda(metricasProjecao6M.mediaRenda)}
+                  </p>
+                  <span className="text-[10px] text-slate-400 mt-0.5 block">
+                    Média mensal prevista (6 meses)
+                  </span>
+                </div>
 
-                      return (
-                        <tr
-                          key={p.mesAno}
-                          className={`hover:bg-slate-50 transition ${
-                            isAtual ? "bg-amber-50/40 font-semibold" : ""
-                          }`}
-                        >
-                          {/* Mês / Ano */}
-                          <td className="px-4 py-3 whitespace-nowrap">
-                            <span className="font-bold text-slate-900">{p.label}</span>
-                            {isAtual && (
-                              <span className="ml-1.5 text-[10px] bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded font-bold">
-                                Atual
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                  <span className="text-[11px] font-semibold text-slate-500 uppercase block">
+                    Gastos Comprometidos Médios
+                  </span>
+                  <p className="text-xl font-black text-slate-900 mt-1">
+                    {formatarMoeda(metricasProjecao6M.mediaComprometido)}
+                  </p>
+                  <span className="text-[10px] text-slate-500 mt-0.5 block font-medium">
+                    {metricasProjecao6M.mediaPct.toFixed(1)}% da renda média
+                  </span>
+                </div>
+
+                <div className={`p-4 rounded-xl border ${metricasProjecao6M.mediaSobra >= 0 ? "bg-emerald-50/70 border-emerald-200" : "bg-rose-50 border-rose-200"}`}>
+                  <span className="text-[11px] font-semibold text-slate-500 uppercase block">
+                    Sobra Líquida Média
+                  </span>
+                  <p className={`text-xl font-black mt-1 ${metricasProjecao6M.mediaSobra >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
+                    {formatarMoeda(metricasProjecao6M.mediaSobra)}
+                  </p>
+                  <span className="text-[10px] font-semibold mt-0.5 block text-emerald-800">
+                    {metricasProjecao6M.mediaSobra >= 0 ? "✓ Capacidade de poupança" : "⚠ Atenção ao déficit"}
+                  </span>
+                </div>
+
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                  <span className="text-[11px] font-semibold text-slate-500 uppercase block">
+                    Maior Folga vs Maior Aperto
+                  </span>
+                  <p className="text-xs font-bold text-emerald-700 mt-1.5 flex items-center justify-between">
+                    <span>Folga: {metricasProjecao6M.mesMaiorSobra?.label.split("/")[0]}</span>
+                    <span>+{formatarMoeda(metricasProjecao6M.maiorSobraVal)}</span>
+                  </p>
+                  <p className="text-xs font-bold text-amber-700 mt-1 flex items-center justify-between">
+                    <span>Aperto: {metricasProjecao6M.mesMaiorComprometimento?.label.split("/")[0]}</span>
+                    <span>{metricasProjecao6M.maiorPctVal.toFixed(1)}% comp.</span>
+                  </p>
+                </div>
+              </div>
+
+              {/* Grid dos Próximos 6 Meses (Cockpit Mensal com Comprometimento) */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-sm font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                    <CalendarRange className="w-4 h-4 text-blue-600" />
+                    Detalhamento Mês a Mês ({visaoProjecao6M === "victor" ? "Victor Roque" : visaoProjecao6M === "leticia" ? "Letícia Roque" : "Casal"})
+                  </h4>
+                  <span className="text-xs text-slate-400">
+                    Clique em &quot;Ver Detalhes&quot; para abrir contas e parcelas
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                  {projecao6MesesCalculada.map((m) => {
+                    const sal = visaoProjecao6M === "victor" ? m.salVic : visaoProjecao6M === "leticia" ? m.salLet : m.rendaCasal;
+                    const comp = visaoProjecao6M === "victor" ? m.totalComprometidoVic : visaoProjecao6M === "leticia" ? m.totalComprometidoLet : m.totalComprometidoCasal;
+                    const contasVal = visaoProjecao6M === "victor" ? m.contasVic : visaoProjecao6M === "leticia" ? m.contasLet : m.contasCasal;
+                    const cartoesVal = visaoProjecao6M === "victor" ? m.cartoesVic : visaoProjecao6M === "leticia" ? m.cartoesLet : m.cartoesCasal;
+                    const sobra = visaoProjecao6M === "victor" ? m.sobraVic : visaoProjecao6M === "leticia" ? m.sobraLet : m.sobraCasal;
+                    const pct = visaoProjecao6M === "victor" ? m.pctComprometidoVic : visaoProjecao6M === "leticia" ? m.pctComprometidoLet : m.pctComprometidoCasal;
+                    const tagSal = visaoProjecao6M === "victor" ? m.tagSalVic : visaoProjecao6M === "leticia" ? m.tagSalLet : (m.vicConfirmado && m.letConfirmada ? "100% Confirmado" : "Previsão Folha");
+                    const isExpandido = mesExpandido6M === m.mesAno;
+
+                    // Cor do termômetro
+                    const corPct = pct <= 60 ? "bg-emerald-500" : pct <= 75 ? "bg-amber-500" : "bg-rose-500";
+                    const corTextoPct = pct <= 60 ? "text-emerald-700" : pct <= 75 ? "text-amber-700" : "text-rose-700";
+
+                    return (
+                      <div
+                        key={m.mesAno}
+                        className={`rounded-2xl border transition shadow-xs flex flex-col justify-between ${
+                          m.isAtual
+                            ? "bg-amber-50/20 border-amber-300 ring-2 ring-amber-200"
+                            : "bg-white border-slate-200 hover:border-slate-300"
+                        }`}
+                      >
+                        <div className="p-5 space-y-4">
+                          {/* Topo do Card */}
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <div className="flex items-center gap-1.5">
+                                <h5 className="font-extrabold text-base text-slate-900">{m.label}</h5>
+                                {m.isAtual && (
+                                  <span className="text-[10px] bg-amber-100 text-amber-900 font-black px-2 py-0.5 rounded-full border border-amber-300">
+                                    Mês Atual
+                                  </span>
+                                )}
+                              </div>
+                              <span className="text-[11px] text-slate-500 font-medium">
+                                {tagSal}
                               </span>
-                            )}
-                          </td>
+                            </div>
 
-                          {/* Victor */}
-                          <td className="px-4 py-3 whitespace-nowrap bg-blue-50/30 text-blue-900">
-                            {formatarMoeda(salVic)}
-                          </td>
-                          <td className="px-4 py-3 whitespace-nowrap bg-blue-50/30 font-semibold text-slate-800">
-                            {formatarMoeda(p.totalGeralVictor)}
-                            <span className="block text-[10px] text-slate-400 font-normal">
-                              Fixas: {formatarMoeda(p.totalContasVictor)} | Cart: {formatarMoeda(p.totalParcelasVictor)}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 whitespace-nowrap bg-blue-50/30">
                             <span
-                              className={`font-bold px-2 py-0.5 rounded text-[11px] ${
-                                saldoVic >= 0
-                                  ? "bg-emerald-100 text-emerald-800"
-                                  : "bg-rose-100 text-rose-800"
+                              className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                                pct <= 60
+                                  ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+                                  : pct <= 75
+                                  ? "bg-amber-50 text-amber-800 border-amber-200"
+                                  : "bg-rose-50 text-rose-800 border-rose-200"
                               }`}
                             >
-                              {formatarMoeda(saldoVic)}
+                              {pct.toFixed(1)}% comprometido
                             </span>
-                          </td>
+                          </div>
 
-                          {/* Letícia */}
-                          <td className="px-4 py-3 whitespace-nowrap bg-purple-50/30 text-purple-900">
-                            {formatarMoeda(salLet)}
-                          </td>
-                          <td className="px-4 py-3 whitespace-nowrap bg-purple-50/30 font-semibold text-slate-800">
-                            {formatarMoeda(p.totalGeralLeticia)}
-                            <span className="block text-[10px] text-slate-400 font-normal">
-                              Fixas: {formatarMoeda(p.totalContasLeticia)} | Cart: {formatarMoeda(p.totalParcelasLeticia)}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 whitespace-nowrap bg-purple-50/30">
-                            <span
-                              className={`font-bold px-2 py-0.5 rounded text-[11px] ${
-                                saldoLet >= 0
-                                  ? "bg-emerald-100 text-emerald-800"
-                                  : "bg-rose-100 text-rose-800"
-                              }`}
-                            >
-                              {formatarMoeda(saldoLet)}
-                            </span>
-                          </td>
+                          {/* Comparativo Salário vs Comprometido */}
+                          <div className="grid grid-cols-2 gap-2 bg-slate-50 p-3 rounded-xl border border-slate-100 text-xs">
+                            <div>
+                              <span className="text-[10px] font-bold uppercase text-slate-400 block">Salário Previsto</span>
+                              <p className="text-sm font-black text-blue-900 mt-0.5">{formatarMoeda(sal)}</p>
+                              {visaoProjecao6M === "casal" && (
+                                <span className="text-[9px] text-slate-400 block">
+                                  V: {formatarMoeda(m.salVic)} • L: {formatarMoeda(m.salLet)}
+                                </span>
+                              )}
+                            </div>
+                            <div>
+                              <span className="text-[10px] font-bold uppercase text-slate-400 block">Comprometido</span>
+                              <p className="text-sm font-black text-slate-900 mt-0.5">{formatarMoeda(comp)}</p>
+                              <span className="text-[9px] text-slate-400 block">
+                                Fixas: {formatarMoeda(contasVal)} • Cart: {formatarMoeda(cartoesVal)}
+                              </span>
+                            </div>
+                          </div>
 
-                          {/* Casal / Família */}
-                          <td className="px-4 py-3 whitespace-nowrap bg-slate-50 font-bold text-slate-900">
-                            {formatarMoeda(rendaCasal)}
-                          </td>
-                          <td className="px-4 py-3 whitespace-nowrap bg-slate-50 font-extrabold text-slate-800">
-                            {formatarMoeda(despesaCasal)}
-                          </td>
-                          <td className="px-4 py-3 whitespace-nowrap bg-emerald-50/50">
-                            <span
-                              className={`font-black text-xs ${
-                                sobraCasal >= 0 ? "text-emerald-700" : "text-rose-600"
-                              }`}
-                            >
-                              {formatarMoeda(sobraCasal)}
-                            </span>
-                          </td>
+                          {/* Barra de Progresso / Termômetro de Comprometimento */}
+                          <div>
+                            <div className="flex justify-between items-center text-[11px] font-bold mb-1">
+                              <span className={corTextoPct}>{pct.toFixed(1)}% da renda</span>
+                              <span className="text-slate-500 font-medium">
+                                Livre: {Math.max(0, 100 - pct).toFixed(1)}%
+                              </span>
+                            </div>
+                            <div className="w-full bg-slate-200 rounded-full h-2 overflow-hidden">
+                              <div
+                                className={`h-2 rounded-full transition-all duration-500 ${corPct}`}
+                                style={{ width: `${Math.min(100, Math.max(0, pct))}%` }}
+                              />
+                            </div>
+                          </div>
 
-                          {/* Destaques / Eventos */}
-                          <td className="px-4 py-3 text-[11px] text-slate-600">
-                            {p.mesAno === "2026-11" && (
-                              <span className="text-blue-700 font-semibold">
-                                Faturas fechadas (C6 R$ 2.890,81 + Sicredi R$ 3.609,22)
-                              </span>
+                          {/* Sobra Líquida Prevista no Mês */}
+                          <div className={`p-3 rounded-xl border flex items-center justify-between ${
+                            sobra >= 0 ? "bg-emerald-50/60 border-emerald-200 text-emerald-900" : "bg-rose-50 border-rose-200 text-rose-900"
+                          }`}>
+                            <div>
+                              <span className="text-[10px] uppercase font-bold text-slate-500 block">Sobra Líquida Livre</span>
+                              <span className="text-[11px] font-semibold text-slate-600">Disponível no mês</span>
+                            </div>
+                            <span className="text-base font-black">
+                              {sobra >= 0 ? "+" : ""}{formatarMoeda(sobra)}
+                            </span>
+                          </div>
+
+                          {/* Destaques / Avisos do Mês */}
+                          {m.mesAno === "2026-11" && (
+                            <p className="text-[11px] text-blue-700 font-medium bg-blue-50/60 p-2 rounded-lg border border-blue-100">
+                              💳 Faturas de cartão fechadas e conferidas (C6 + Sicredi)
+                            </p>
+                          )}
+                          {m.mesAno === "2026-12" && (
+                            <p className="text-[11px] text-amber-800 font-medium bg-amber-50 p-2 rounded-lg border border-amber-200">
+                              💡 Novas contas fixas (Aluguel R$ 1.450, Luz R$ 350, Água R$ 120, Net R$ 135)
+                            </p>
+                          )}
+                          {m.mesAno === "2027-01" && (
+                            <p className="text-[11px] text-emerald-800 font-bold bg-emerald-50 p-2 rounded-lg border border-emerald-200">
+                              🚗 Início Parcela Carro (R$ 1.750,00 em 12/01/2027)
+                            </p>
+                          )}
+                          {m.mesAno > "2027-01" && (
+                            <p className="text-[11px] text-slate-600 font-medium bg-slate-50 p-2 rounded-lg border border-slate-200">
+                              🚗 Parcela Carro R$ 1.750 + amortização progressiva de parcelas antigas
+                            </p>
+                          )}
+                        </div>
+
+                        {/* Botão de Expansão */}
+                        <div className="border-t border-slate-100 p-3 bg-slate-50/50 rounded-b-2xl">
+                          <button
+                            type="button"
+                            onClick={() => setMesExpandido6M(isExpandido ? null : m.mesAno)}
+                            className="w-full py-1.5 px-3 rounded-lg text-xs font-bold text-slate-700 hover:text-slate-900 hover:bg-slate-200/60 transition flex items-center justify-center gap-1.5"
+                          >
+                            {isExpandido ? (
+                              <>
+                                <ChevronUp className="w-4 h-4 text-slate-500" />
+                                Ocultar Detalhes das Contas & Parcelas
+                              </>
+                            ) : (
+                              <>
+                                <ChevronDown className="w-4 h-4 text-slate-500" />
+                                Ver Detalhes ({m.contas.length} contas • {m.parcelasProjetadas.length} parcelas)
+                              </>
                             )}
-                            {p.mesAno === "2026-12" && (
-                              <span className="text-amber-700 font-semibold">
-                                💡 Novas contas fixas (Aluguel R$ 1.450, Luz R$ 350, Água R$ 120, Internet R$ 135)
+                          </button>
+                        </div>
+
+                        {/* Painel de Detalhamento do Mês Expandido */}
+                        {isExpandido && (
+                          <div className="p-4 border-t border-slate-200 bg-slate-50 space-y-4 rounded-b-2xl text-xs">
+                            {/* 1. Contas Fixas do Mês */}
+                            <div className="bg-white rounded-xl p-3 border border-slate-200 space-y-2">
+                              <div className="flex items-center justify-between border-b border-slate-100 pb-1.5">
+                                <strong className="text-slate-800 font-bold flex items-center gap-1">
+                                  <CalendarRange className="w-3.5 h-3.5 text-blue-600" />
+                                  Contas Fixas & Boletos ({m.label})
+                                </strong>
+                                <span className="font-extrabold text-slate-900">{formatarMoeda(contasVal)}</span>
+                              </div>
+
+                              <div className="divide-y divide-slate-100 max-h-48 overflow-y-auto">
+                                {m.contas.map((c) => {
+                                  const vVic = c.quemPaga === "VIC" ? c.valor : c.quemPaga === "DIV" ? c.valor / 2 : 0;
+                                  const vLet = c.quemPaga === "LE" ? c.valor : c.quemPaga === "DIV" ? c.valor / 2 : 0;
+                                  const valPerfil = visaoProjecao6M === "victor" ? vVic : visaoProjecao6M === "leticia" ? vLet : c.valor;
+
+                                  if (visaoProjecao6M !== "casal" && valPerfil === 0) return null;
+
+                                  return (
+                                    <div key={c.id} className="py-1.5 flex items-center justify-between">
+                                      <div>
+                                        <p className="font-semibold text-slate-800">{c.descricao}</p>
+                                        <span className="text-[10px] text-slate-400">
+                                          Venc: {c.vencimento.split("-").reverse().join("/")} • {c.quemPaga === "DIV" ? "Dividido (50%)" : c.quemPaga === "VIC" ? "100% Victor" : "100% Letícia"}
+                                        </span>
+                                      </div>
+                                      <span className="font-bold text-slate-900">{formatarMoeda(valPerfil)}</span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+
+                            {/* 2. Parcelas de Cartão Ativas no Mês */}
+                            <div className="bg-white rounded-xl p-3 border border-slate-200 space-y-2">
+                              <div className="flex items-center justify-between border-b border-slate-100 pb-1.5">
+                                <strong className="text-slate-800 font-bold flex items-center gap-1">
+                                  <CreditCard className="w-3.5 h-3.5 text-purple-600" />
+                                  Parcelas dos Cartões ({m.label})
+                                </strong>
+                                <span className="font-extrabold text-slate-900">{formatarMoeda(cartoesVal)}</span>
+                              </div>
+
+                              {m.parcelasProjetadas.length === 0 ? (
+                                <p className="text-[11px] text-slate-400 py-1 text-center">Nenhuma parcela ativa neste mês.</p>
+                              ) : (
+                                <div className="divide-y divide-slate-100 max-h-48 overflow-y-auto">
+                                  {m.parcelasProjetadas.map((parc) => {
+                                    const valPerfil = visaoProjecao6M === "victor" ? parc.valorVictor : visaoProjecao6M === "leticia" ? parc.valorLeticia : parc.valor;
+                                    if (visaoProjecao6M !== "casal" && valPerfil === 0) return null;
+
+                                    return (
+                                      <div key={parc.id} className="py-1.5 flex items-center justify-between">
+                                        <div>
+                                          <p className="font-semibold text-slate-800">{parc.descricao}</p>
+                                          <span className="text-[10px] text-slate-400">
+                                            {parc.banco} • Parcela {parc.parcelaAtual}/{parc.totalParcelas} • {parc.quemPaga === "DIV" ? "Dividido" : parc.quemPaga === "VIC" ? "Victor" : "Letícia"}
+                                          </span>
+                                        </div>
+                                        <span className="font-bold text-slate-900">{formatarMoeda(valPerfil)}</span>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Atalhos Rápidos */}
+                            <div className="flex items-center justify-between gap-2 pt-1">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  handleSelecionarMes(m.mesAno);
+                                  setAba("salarios");
+                                }}
+                                className="text-[11px] font-bold text-blue-600 hover:text-blue-800 transition flex items-center gap-1"
+                              >
+                                <ExternalLink className="w-3 h-3" />
+                                Ajustar Salário de {m.label.split("/")[0]}
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  handleSelecionarMes(m.mesAno);
+                                  setAba("contas");
+                                }}
+                                className="text-[11px] font-bold text-purple-600 hover:text-purple-800 transition flex items-center gap-1"
+                              >
+                                <ExternalLink className="w-3 h-3" />
+                                Ver Contas de {m.label.split("/")[0]}
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Tabela Comparativa Consolidada dos 6 Meses */}
+              <div className="mt-6 border border-slate-200 rounded-2xl overflow-hidden shadow-xs">
+                <div className="bg-slate-900 text-white p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <TrendingUp className="w-4 h-4 text-emerald-400" />
+                    <h4 className="font-bold text-sm">Quadro Comparativo Consolidado (Próximos 6 Meses)</h4>
+                  </div>
+                  <span className="text-[11px] text-slate-400 font-medium">
+                    Visão ativa: {visaoProjecao6M === "victor" ? "Victor Roque" : visaoProjecao6M === "leticia" ? "Letícia Roque" : "Casal (Familiar)"}
+                  </span>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs text-left">
+                    <thead className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200 uppercase tracking-wider text-[11px]">
+                      <tr>
+                        <th className="px-4 py-3">Mês / Ano</th>
+                        <th className="px-4 py-3 text-blue-900 bg-blue-50/50">Salário Previsto</th>
+                        <th className="px-4 py-3">Contas Fixas</th>
+                        <th className="px-4 py-3">Parcelas Cartões</th>
+                        <th className="px-4 py-3 font-extrabold text-slate-900 bg-slate-50">Total Comprometido</th>
+                        <th className="px-4 py-3 text-center">Taxa Comprometida</th>
+                        <th className="px-4 py-3 text-emerald-900 bg-emerald-50/50">Sobra Livre</th>
+                        <th className="px-4 py-3">Destaques / Eventos</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 font-medium">
+                      {projecao6MesesCalculada.map((p) => {
+                        const isAtual = p.isAtual;
+                        const sal = visaoProjecao6M === "victor" ? p.salVic : visaoProjecao6M === "leticia" ? p.salLet : p.rendaCasal;
+                        const contasVal = visaoProjecao6M === "victor" ? p.contasVic : visaoProjecao6M === "leticia" ? p.contasLet : p.contasCasal;
+                        const cartoesVal = visaoProjecao6M === "victor" ? p.cartoesVic : visaoProjecao6M === "leticia" ? p.cartoesLet : p.cartoesCasal;
+                        const totalComp = visaoProjecao6M === "victor" ? p.totalComprometidoVic : visaoProjecao6M === "leticia" ? p.totalComprometidoLet : p.totalComprometidoCasal;
+                        const sobra = visaoProjecao6M === "victor" ? p.sobraVic : visaoProjecao6M === "leticia" ? p.sobraLet : p.sobraCasal;
+                        const pct = visaoProjecao6M === "victor" ? p.pctComprometidoVic : visaoProjecao6M === "leticia" ? p.pctComprometidoLet : p.pctComprometidoCasal;
+
+                        return (
+                          <tr
+                            key={p.mesAno}
+                            className={`hover:bg-slate-50 transition ${
+                              isAtual ? "bg-amber-50/40 font-semibold" : ""
+                            }`}
+                          >
+                            <td className="px-4 py-3.5 whitespace-nowrap">
+                              <span className="font-bold text-slate-900">{p.label}</span>
+                              {isAtual && (
+                                <span className="ml-1.5 text-[10px] bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded font-bold">
+                                  Atual
+                                </span>
+                              )}
+                            </td>
+
+                            <td className="px-4 py-3.5 whitespace-nowrap bg-blue-50/30 font-bold text-blue-900">
+                              {formatarMoeda(sal)}
+                            </td>
+
+                            <td className="px-4 py-3.5 whitespace-nowrap text-slate-700">
+                              {formatarMoeda(contasVal)}
+                            </td>
+
+                            <td className="px-4 py-3.5 whitespace-nowrap text-slate-700">
+                              {formatarMoeda(cartoesVal)}
+                            </td>
+
+                            <td className="px-4 py-3.5 whitespace-nowrap bg-slate-50 font-black text-slate-900">
+                              {formatarMoeda(totalComp)}
+                            </td>
+
+                            <td className="px-4 py-3.5 whitespace-nowrap text-center">
+                              <span
+                                className={`text-[11px] font-bold px-2 py-0.5 rounded-full border ${
+                                  pct <= 60
+                                    ? "bg-emerald-100 text-emerald-800 border-emerald-300"
+                                    : pct <= 75
+                                    ? "bg-amber-100 text-amber-800 border-amber-300"
+                                    : "bg-rose-100 text-rose-800 border-rose-300"
+                                }`}
+                              >
+                                {pct.toFixed(1)}%
                               </span>
-                            )}
-                            {p.mesAno === "2027-01" && (
-                              <span className="text-emerald-700 font-bold">
-                                🚗 Início Parcela Carro (R$ 1.750,00 em 12/01/2027)
+                            </td>
+
+                            <td className="px-4 py-3.5 whitespace-nowrap bg-emerald-50/30">
+                              <span
+                                className={`font-black text-xs ${
+                                  sobra >= 0 ? "text-emerald-700" : "text-rose-600"
+                                }`}
+                              >
+                                {formatarMoeda(sobra)}
                               </span>
-                            )}
-                            {p.mesAno > "2027-01" && (
-                              <span className="text-slate-500">
-                                🚗 Parcela Carro R$ 1.750 + amortização progressiva de parcelas
-                              </span>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                            </td>
+
+                            <td className="px-4 py-3 text-[11px] text-slate-600">
+                              {p.mesAno === "2026-11" && (
+                                <span className="text-blue-700 font-semibold">
+                                  Faturas fechadas (C6 + Sicredi)
+                                </span>
+                              )}
+                              {p.mesAno === "2026-12" && (
+                                <span className="text-amber-700 font-semibold">
+                                  💡 Novas contas fixas (Aluguel R$ 1.450, Luz R$ 350, Água R$ 120, Internet R$ 135)
+                                </span>
+                              )}
+                              {p.mesAno === "2027-01" && (
+                                <span className="text-emerald-700 font-bold">
+                                  🚗 Início Parcela Carro (R$ 1.750,00 em 12/01/2027)
+                                </span>
+                              )}
+                              {p.mesAno > "2027-01" && (
+                                <span className="text-slate-500">
+                                  🚗 Parcela Carro R$ 1.750 + amortização progressiva de parcelas
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
           </div>
