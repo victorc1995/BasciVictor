@@ -87,6 +87,11 @@ export default function DashboardPage() {
   const [parcelaAtual, setParcelaAtual] = useState(1);
   const [totalParcelas, setTotalParcelas] = useState(12);
 
+  // Modal de Edição Rápida de Salários na Tela Inicial
+  const [modalSalarioAberto, setModalSalarioAberto] = useState(false);
+  const [modalSalarioVictorVal, setModalSalarioVictorVal] = useState("");
+  const [modalSalarioLeticiaVal, setModalSalarioLeticiaVal] = useState("");
+
   // Upload PDF
   const [bancoPDF, setBancoPDF] = useState<CartaoBanco>("C6 Bank");
   const [statusPDF, setStatusPDF] = useState<string>("");
@@ -349,6 +354,47 @@ export default function DashboardPage() {
         },
       };
     });
+  };
+
+  // Handlers para modal de edição rápida de salários na Tela Inicial
+  const abrirModalSalario = () => {
+    setModalSalarioVictorVal(
+      contrachequeMes.victorConfirmado
+        ? contrachequeMes.victorValorReal.toFixed(2)
+        : resVictor.liquidoFolha.toFixed(2)
+    );
+    setModalSalarioLeticiaVal(
+      contrachequeMes.leticiaConfirmada
+        ? contrachequeMes.leticiaValorReal.toFixed(2)
+        : resLeticia.liquidoFolha.toFixed(2)
+    );
+    setModalSalarioAberto(true);
+  };
+
+  const salvarModalSalario = (e: React.FormEvent) => {
+    e.preventDefault();
+    const vVal = parseFloat(modalSalarioVictorVal.replace(",", "."));
+    const lVal = parseFloat(modalSalarioLeticiaVal.replace(",", "."));
+
+    setContracheques((prev) => {
+      const atual = prev[mesSelecionado] || {
+        victorConfirmado: false,
+        victorValorReal: resVictor.liquidoFolha,
+        leticiaConfirmada: false,
+        leticiaValorReal: resLeticia.liquidoFolha,
+      };
+      return {
+        ...prev,
+        [mesSelecionado]: {
+          ...atual,
+          victorConfirmado: !isNaN(vVal) && vVal > 0 ? true : atual.victorConfirmado,
+          victorValorReal: !isNaN(vVal) && vVal > 0 ? vVal : atual.victorValorReal,
+          leticiaConfirmada: !isNaN(lVal) && lVal > 0 ? true : atual.leticiaConfirmada,
+          leticiaValorReal: !isNaN(lVal) && lVal > 0 ? lVal : atual.leticiaValorReal,
+        },
+      };
+    });
+    setModalSalarioAberto(false);
   };
 
   // Cálculos de Poupança (Confirmado vs Previsão Futura)
@@ -910,13 +956,34 @@ export default function DashboardPage() {
             {/* 4 Cards Principais (KPIs) */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
-                <span className="text-xs font-semibold uppercase text-slate-400">Salário Líquido Total (Casal)</span>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold uppercase text-slate-400">Salário Líquido Total (Casal)</span>
+                  <button
+                    onClick={abrirModalSalario}
+                    className="text-[11px] text-emerald-600 hover:text-emerald-800 font-bold hover:underline flex items-center gap-1"
+                    title="Editar ou confirmar os valores líquidos do salário"
+                  >
+                    <Pencil className="w-3 h-3" />
+                    Editar / Confirmar
+                  </button>
+                </div>
                 <p className="text-2xl font-extrabold text-emerald-600 mt-1">
                   {formatarMoeda(salarioLiquidoTotalCasal)}
                 </p>
-                <p className="text-xs text-slate-500 mt-2">
-                  Victor: {formatarMoeda(resVictor.totalDisponivelMes)} • Letícia: {formatarMoeda(resLeticia.totalDisponivelMes)}
-                </p>
+                <div className="flex flex-col gap-1 text-xs text-slate-500 mt-2 pt-2 border-t border-slate-100">
+                  <div className="flex justify-between items-center">
+                    <span>Victor: <strong className="text-slate-800">{formatarMoeda(salarioVictorFinal)}</strong></span>
+                    <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded border ${contrachequeMes.victorConfirmado ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-amber-50 text-amber-700 border-amber-200"}`}>
+                      {contrachequeMes.victorConfirmado ? "✓ Confirmado" : "⏳ Previsão"}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span>Letícia: <strong className="text-slate-800">{formatarMoeda(salarioLeticiaFinal)}</strong></span>
+                    <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded border ${contrachequeMes.leticiaConfirmada ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-amber-50 text-amber-700 border-amber-200"}`}>
+                      {contrachequeMes.leticiaConfirmada ? "✓ Confirmado" : "⏳ Previsão"}
+                    </span>
+                  </div>
+                </div>
               </div>
 
               <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
@@ -979,9 +1046,22 @@ export default function DashboardPage() {
 
                 {/* Sub-resumo Salário vs Gastos Victor */}
                 <div className="bg-blue-50/70 border-b border-blue-100 px-6 py-2.5 flex items-center justify-between text-xs">
-                  <span className="text-slate-600 font-medium">
-                    Salário Líquido: <strong>{formatarMoeda(salarioVictorFinal)}</strong>
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-slate-600 font-medium">
+                      Salário Líquido: <strong>{formatarMoeda(salarioVictorFinal)}</strong>
+                    </span>
+                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${contrachequeMes.victorConfirmado ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-amber-50 text-amber-700 border-amber-200"}`}>
+                      {contrachequeMes.victorConfirmado ? "✓ Confirmado" : "⏳ Previsão"}
+                    </span>
+                    <button
+                      onClick={abrirModalSalario}
+                      className="text-[11px] text-blue-600 hover:text-blue-800 underline font-semibold ml-1 flex items-center gap-0.5"
+                      title="Editar ou confirmar salário"
+                    >
+                      <Pencil className="w-3 h-3" />
+                      Editar
+                    </button>
+                  </div>
                   <span className={resumoMensalCasal.saldoVictor >= 0 ? "text-emerald-700 font-bold" : "text-rose-600 font-bold"}>
                     Saldo Restante: {formatarMoeda(resumoMensalCasal.saldoVictor)}
                   </span>
@@ -1081,9 +1161,22 @@ export default function DashboardPage() {
 
                 {/* Sub-resumo Salário vs Gastos Letícia */}
                 <div className="bg-purple-50/70 border-b border-purple-100 px-6 py-2.5 flex items-center justify-between text-xs">
-                  <span className="text-slate-600 font-medium">
-                    Salário Líquido: <strong>{formatarMoeda(salarioLeticiaFinal)}</strong>
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-slate-600 font-medium">
+                      Salário Líquido: <strong>{formatarMoeda(salarioLeticiaFinal)}</strong>
+                    </span>
+                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${contrachequeMes.leticiaConfirmada ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-amber-50 text-amber-700 border-amber-200"}`}>
+                      {contrachequeMes.leticiaConfirmada ? "✓ Confirmado" : "⏳ Previsão"}
+                    </span>
+                    <button
+                      onClick={abrirModalSalario}
+                      className="text-[11px] text-purple-600 hover:text-purple-800 underline font-semibold ml-1 flex items-center gap-0.5"
+                      title="Editar ou confirmar salário"
+                    >
+                      <Pencil className="w-3 h-3" />
+                      Editar
+                    </button>
+                  </div>
                   <span className={resumoMensalCasal.saldoLeticia >= 0 ? "text-emerald-700 font-bold" : "text-rose-600 font-bold"}>
                     Saldo Restante: {formatarMoeda(resumoMensalCasal.saldoLeticia)}
                   </span>
@@ -3003,6 +3096,86 @@ export default function DashboardPage() {
           </div>
         </div>
       )}
+
+      {/* ========================================================= */}
+      {/* MODAL: EDIÇÃO RÁPIDA / CONFIRMAÇÃO DE SALÁRIOS            */}
+      {/* ========================================================= */}
+      {modalSalarioAberto && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div>
+                <h3 className="font-bold text-lg text-slate-800">Salários Líquidos do Mês</h3>
+                <p className="text-xs text-slate-500">Confirme ou altere os valores recebidos para ({formatarMesAnoLabel(mesSelecionado)})</p>
+              </div>
+              <button
+                onClick={() => setModalSalarioAberto(false)}
+                className="text-slate-400 hover:text-slate-700 font-bold p-1"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={salvarModalSalario} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">
+                  Victor Roque — Líquido em Conta (R$)
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  required
+                  value={modalSalarioVictorVal}
+                  onChange={(e) => setModalSalarioVictorVal(e.target.value)}
+                  className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm font-bold text-blue-700 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  placeholder="0,00"
+                />
+                <span className="text-[10px] text-slate-400 mt-0.5 block">
+                  {contrachequeMes.victorConfirmado ? "✓ Atualmente confirmado" : "⏳ Previsão simulador: " + formatarMoeda(resVictor.liquidoFolha)}
+                </span>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">
+                  Letícia Roque — Líquido em Conta (R$)
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  required
+                  value={modalSalarioLeticiaVal}
+                  onChange={(e) => setModalSalarioLeticiaVal(e.target.value)}
+                  className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm font-bold text-purple-700 focus:ring-2 focus:ring-purple-500 focus:outline-none"
+                  placeholder="0,00"
+                />
+                <span className="text-[10px] text-slate-400 mt-0.5 block">
+                  {contrachequeMes.leticiaConfirmada ? "✓ Atualmente confirmado" : "⏳ Previsão simulador: " + formatarMoeda(resLeticia.liquidoFolha)}
+                </span>
+              </div>
+
+              <div className="pt-2 flex flex-col gap-2">
+                <button
+                  type="submit"
+                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 rounded-xl shadow-md shadow-emerald-600/20 transition text-sm flex items-center justify-center gap-2"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  Confirmar e Atualizar Tela Inicial
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setModalSalarioAberto(false);
+                    setAba("salarios");
+                  }}
+                  className="w-full py-2 text-xs font-semibold text-slate-600 hover:text-slate-900 border border-slate-200 rounded-xl hover:bg-slate-50 transition"
+                >
+                  Abrir Cálculo Detalhado / Simulador (Aba 3)
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -3042,6 +3215,10 @@ function SalarioCard({
   const [statusPDFContracheque, setStatusPDFContracheque] = useState<string>("");
   const [novoExtraDesc, setNovoExtraDesc] = useState("");
   const [novoExtraValor, setNovoExtraValor] = useState("");
+  const [editandoValor, setEditandoValor] = useState(false);
+  const [inputValorEditado, setInputValorEditado] = useState<string>(() =>
+    contrachequeConfirmado ? valorRealContracheque.toFixed(2) : resultado.liquidoFolha.toFixed(2)
+  );
 
   const totalGanhosExtras = rendimentosExtras.reduce((acc, it) => acc + it.valor, 0);
 
@@ -3049,8 +3226,11 @@ function SalarioCard({
   useEffect(() => {
     if (!contrachequeConfirmado) {
       setInputVal(resultado.liquidoFolha.toFixed(2));
+      setInputValorEditado(resultado.liquidoFolha.toFixed(2));
+    } else {
+      setInputValorEditado(valorRealContracheque.toFixed(2));
     }
-  }, [resultado.liquidoFolha, contrachequeConfirmado]);
+  }, [resultado.liquidoFolha, contrachequeConfirmado, valorRealContracheque]);
 
   const handleUploadContrachequePDF = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -3267,6 +3447,133 @@ function SalarioCard({
           )}
         </div>
 
+        {/* Barra de Confirmação do Salário Calculado & Opção de Edição */}
+        <div className="p-4 rounded-xl border border-emerald-300 bg-gradient-to-r from-emerald-50 via-teal-50 to-emerald-50 shadow-sm space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-800 flex items-center gap-1.5">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                Confirmação do Salário Líquido ({mesAnoLabel})
+              </span>
+              <div className="flex items-baseline gap-2 mt-1">
+                <span className="text-2xl font-black text-emerald-700">
+                  {formatarMoeda(contrachequeConfirmado ? valorRealContracheque : resultado.liquidoFolha)}
+                </span>
+                <span className="text-xs text-slate-500 font-medium">
+                  {contrachequeConfirmado ? "(Valor Oficial Confirmado)" : "(Líquido Calculado)"}
+                </span>
+              </div>
+              {(params.incluirValeRefeicao || resultado.valorDiarias > 0 || totalGanhosExtras > 0) && (
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Total com VR, Diárias e Extras:{" "}
+                  <strong className="text-slate-800">
+                    {formatarMoeda(
+                      (contrachequeConfirmado ? valorRealContracheque : resultado.liquidoFolha) +
+                        (params.incluirValeRefeicao ? resultado.valeRefeicaoIndenizatorio : 0) +
+                        resultado.valorDiarias +
+                        totalGanhosExtras
+                    )}
+                  </strong>
+                </p>
+              )}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              {contrachequeConfirmado ? (
+                <>
+                  <span className="text-xs font-bold text-emerald-800 bg-emerald-100 border border-emerald-300 px-3 py-2 rounded-xl flex items-center gap-1.5 shadow-sm">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                    Confirmado no Mês
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditandoValor(true);
+                      setInputValorEditado(valorRealContracheque.toFixed(2));
+                    }}
+                    className="inline-flex items-center gap-1.5 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold px-3 py-2 rounded-xl border border-slate-300 shadow-sm transition"
+                    title="Editar valor caso tenha algo diferente"
+                  >
+                    <Pencil className="w-3.5 h-3.5 text-blue-600" />
+                    Editar Valor
+                  </button>
+                  <button
+                    type="button"
+                    onClick={onReverterContracheque}
+                    className="text-xs text-slate-500 hover:text-slate-800 font-semibold px-2.5 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 transition"
+                    title="Voltar para a previsão calculada do simulador"
+                  >
+                    ↺ Recalcular
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => onConfirmarContracheque(resultado.liquidoFolha)}
+                    className="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs px-4 py-2.5 rounded-xl shadow-md shadow-emerald-600/25 transition active:scale-95"
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    Confirmar Salário Líquido ({formatarMoeda(resultado.liquidoFolha)})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditandoValor(true);
+                      setInputValorEditado(resultado.liquidoFolha.toFixed(2));
+                    }}
+                    className="inline-flex items-center gap-1.5 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold px-3 py-2.5 rounded-xl border border-slate-300 shadow-sm transition"
+                    title="Editar valor caso tenha algo diferente"
+                  >
+                    <Pencil className="w-3.5 h-3.5 text-slate-500" />
+                    Editar / Outro Valor
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* Editor Inline de Valor Diferente */}
+          {editandoValor && (
+            <div className="pt-2 border-t border-emerald-200/80 flex flex-col sm:flex-row items-center gap-2">
+              <span className="text-xs font-semibold text-slate-700 whitespace-nowrap">
+                Ajustar Valor Líquido (R$):
+              </span>
+              <input
+                type="number"
+                step="0.01"
+                placeholder={resultado.liquidoFolha.toFixed(2)}
+                value={inputValorEditado}
+                onChange={(e) => setInputValorEditado(e.target.value)}
+                className="w-full sm:w-44 border border-slate-300 rounded-lg px-3 py-1.5 text-sm font-bold text-slate-900 bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                autoFocus
+              />
+              <div className="flex gap-2 w-full sm:w-auto">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const val = parseFloat(inputValorEditado.replace(",", "."));
+                    if (!isNaN(val) && val > 0) {
+                      onConfirmarContracheque(val);
+                      setEditandoValor(false);
+                    }
+                  }}
+                  className="flex-1 sm:flex-none bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 py-1.5 rounded-lg shadow-sm transition"
+                >
+                  Salvar e Confirmar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditandoValor(false)}
+                  className="text-xs text-slate-500 hover:text-slate-700 px-2.5 py-1.5"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
         {/* Confirmação do Contracheque Real do Mês */}
         <div className="mt-4 p-4 rounded-xl border border-slate-200 bg-slate-50 space-y-3">
           <div className="flex items-center justify-between">
@@ -3335,7 +3642,18 @@ function SalarioCard({
                   </div>
                 </div>
               )}
-              <div className="flex gap-2 pt-1">
+              <div className="flex flex-wrap gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditandoValor(true);
+                    setInputValorEditado(valorRealContracheque.toFixed(2));
+                  }}
+                  className="py-1.5 px-3 bg-white hover:bg-slate-50 text-slate-700 font-semibold text-xs rounded-lg border border-slate-300 transition shadow-sm inline-flex items-center gap-1"
+                >
+                  <Pencil className="w-3.5 h-3.5 text-blue-600" />
+                  Editar Valor
+                </button>
                 <label className="flex-1 cursor-pointer inline-flex items-center justify-center gap-1.5 py-1.5 px-3 bg-white hover:bg-slate-50 text-slate-700 font-semibold text-xs rounded-lg border border-slate-300 transition text-center shadow-sm">
                   <FileText className="w-3.5 h-3.5 text-emerald-600" />
                   Substituir por outro PDF
