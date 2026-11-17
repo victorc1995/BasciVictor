@@ -67,12 +67,14 @@ const MESES_MAP: Record<string, string> = {
 export async function extrairTextoDePDF(file: File, senhaUsuario?: string): Promise<string> {
   const pdfjsLib = await import("pdfjs-dist");
 
-  // Configuração resiliente do worker do PDF.js
+  // Configuração resiliente do worker do PDF.js (local primeiro, CDN como fallback)
   if (typeof window !== "undefined") {
     try {
-      pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
+      pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
     } catch {
-      // fallback sem worker se bloqueado
+      try {
+        pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
+      } catch {}
     }
   }
 
@@ -147,7 +149,24 @@ export async function extrairTextoDePDF(file: File, senhaUsuario?: string): Prom
     linesMap.sort((a, b) => b.y - a.y);
     for (const line of linesMap) {
       line.items.sort((a, b) => a.x - b.x);
-      textoCompleto += line.items.map((it) => it.str).join(" ") + "\n";
+      let lineStr = "";
+      let lastRight: number | null = null;
+      for (const it of line.items) {
+        if (it.str === " ") {
+          if (!lineStr.endsWith(" ")) lineStr += " ";
+          lastRight = it.x + (it.w || 0);
+          continue;
+        }
+        // Se houver espaçamento real (> 2.5px) entre o fim do caractere anterior e o atual, adiciona espaço
+        if (lastRight !== null && it.x - lastRight > 2.5) {
+          if (!lineStr.endsWith(" ")) lineStr += " ";
+        }
+        lineStr += it.str;
+        lastRight = it.x + (it.w || 0);
+      }
+      if (lineStr.trim().length > 0) {
+        textoCompleto += lineStr.trim() + "\n";
+      }
     }
   }
 
@@ -179,7 +198,11 @@ export function identificarCategoriaEEmissor(texto: string): {
   // 1. FATURAS DE CARTÃO DE CRÉDITO (PRIORIDADE MÁXIMA)
   // Devem vir antes para evitar que "Sicredi Caminho das Águas" caia em Água
   // ou que opções de "Financiamento de fatura" caiam em Carro.
-  if (upper.includes("SICREDI")) {
+  if (
+    upper.includes("SICREDI") ||
+    (upper.includes("CARTÃO") && upper.includes("CIDADE") && upper.includes("QUEM")) ||
+    (upper.includes("CARTAO") && upper.includes("CIDADE") && upper.includes("QUEM"))
+  ) {
     return {
       categoria: "Fatura Cartão",
       descricao: "Fatura Sicredi",
@@ -192,7 +215,10 @@ export function identificarCategoriaEEmissor(texto: string): {
     upper.includes("C6 BANK") ||
     upper.includes("BANCO C6") ||
     upper.includes("C6BANK") ||
-    upper.includes("C6 CARBON")
+    upper.includes("C6 CARBON") ||
+    (upper.includes("DESCRIÇÃO DA COMPRA") && upper.includes("QUEM PAGA")) ||
+    (upper.includes("DESCRICAO DA COMPRA") && upper.includes("QUEM PAGA")) ||
+    (upper.includes("LETICIA RIBEIRO") && upper.includes("VICTOR ROQUE"))
   ) {
     return {
       categoria: "Fatura Cartão",
@@ -375,22 +401,24 @@ export function identificarCategoriaEEmissor(texto: string): {
 
 /**
  * Extração de Data de Vencimento com suporte a formatos colunados,
- * meses por extenso e padrão invertido (data antes da palavra)
+ * meses por extenso, múltiplos padrões e priorização da data de vencimento real
  */
 export function extrairVencimento(texto: string): string {
-  // 1. Data diretamente após a palavra VENCIMENTO (ex: "Vencimento: 01/11/2026")
+  // 1. Data diretamente após a palavra VENCIMENTO (mesma linha ou linha seguinte, até 40 chars)
   const regexAposDireto =
-    /VENCIMENTO\s*[:\s\-]{1,15}(\d{2})[\/\.\-](\d{2})[\/\.\-](\d{2,4})/i;
+    /VENCIMENTO[\s\S]{0,35}?(\d{1,2})[\/\.\-](\d{1,2})[\/\.\-](\d{2,4})/i;
   const matchAposDireto = texto.match(regexAposDireto);
   if (matchAposDireto) {
+    const dia = matchAposDireto[1].padStart(2, "0");
+    const mes = matchAposDireto[2].padStart(2, "0");
     let ano = matchAposDireto[3];
     if (ano.length === 2) ano = "20" + ano;
-    return `${ano}-${matchAposDireto[2]}-${matchAposDireto[1]}`;
+    return `${ano}-${mes}-${dia}`;
   }
 
-  // 2. Vencimento com nome do mês (ex: "Vencimento 03/out" ou "Vencimento 03/nov" da Sicredi)
+  // 2. Vencimento com nome do mês (ex: "Vencimento 10/dez", "Vencimento 03/nov", "10 de dezembro de 2026")
   const regexMesTexto =
-    /VENCIMENTO\s*[:\s\-]{1,30}(\d{1,2})\s*(?:\/|\s+DE\s+)\s*([A-Za-zç]{3,9})(?:\s*(?:\/|\s+DE\s+)\s*(\d{2,4}))?/i;
+    /VENCIMENTO[\s\S]{0,40}?(\d{1,2})\s*(?:\/|\s+DE\s+|\s+)\s*([A-Za-zç]{3,9})(?:\s*(?:\/|\s+DE\s+|\s+)\s*(\d{2,4}))?/i;
   const matchMesTexto = texto.match(regexMesTexto);
   if (matchMesTexto) {
     const dia = matchMesTexto[1].padStart(2, "0");
@@ -401,47 +429,79 @@ export function extrairVencimento(texto: string): string {
       .slice(0, 3);
     const mesNum = MESES_MAP[mesNome];
     if (mesNum) {
-      let ano = matchMesTexto[3] || "2026";
+      let ano = matchMesTexto[3] || (["01", "02", "03", "04"].includes(mesNum) ? "2027" : "2026");
       if (ano.length === 2) ano = "20" + ano;
       return `${ano}-${mesNum}-${dia}`;
     }
   }
 
-  // 3. Vencimento em layouts colunados (ex: CEEE "VENCIMENTO ... 20.11.2026", até 60 chars)
-  const regexColunado =
-    /VENCIMENTO[^\d\n\r]{0,60}?(\d{2})[\/\.\-](\d{2})[\/\.\-](\d{2,4})/i;
-  const matchColunado = texto.match(regexColunado);
-  if (matchColunado) {
-    let ano = matchColunado[3];
+  // 3. Data de pagamento em linhas de tabela de extrato (ex: "R$ 43,89 DIv 03/11/26" ou "R$ 156,10 01/11/2026 LE")
+  const regexFaturaRow =
+    /R\$\s*[\d\.\,]+\s+(?:(?:DIV|DIv|LE|VIC|VICTOR|LETICIA)\s+)?(\d{1,2})[\/\.\-](\d{1,2})[\/\.\-](\d{2,4})(?:\s+(?:DIV|DIv|LE|VIC|VICTOR|LETICIA))?/i;
+  const matchFaturaRow = texto.match(regexFaturaRow);
+  if (matchFaturaRow) {
+    const dia = matchFaturaRow[1].padStart(2, "0");
+    const mes = matchFaturaRow[2].padStart(2, "0");
+    let ano = matchFaturaRow[3];
     if (ano.length === 2) ano = "20" + ano;
-    return `${ano}-${matchColunado[2]}-${matchColunado[1]}`;
+    return `${ano}-${mes}-${dia}`;
   }
 
-  // 4. Data ANTES da palavra Vencimento (ex: "15/10/2026 Vencimento" da Vero)
-  const regexAntes =
-    /(\d{2})[\/\.\-](\d{2})[\/\.\-](\d{2,4})\s*[:\s\-]{0,20}(?:M[EÊ]S\s+DE\s+[^\n]{0,30})?VENCIMENTO/i;
-  const matchAntes = texto.match(regexAntes);
-  if (matchAntes) {
-    let ano = matchAntes[3];
-    if (ano.length === 2) ano = "20" + ano;
-    return `${ano}-${matchAntes[2]}-${matchAntes[1]}`;
-  }
-
-  // 5. "Pagar até DD/MM/AAAA" ou "Data de Vencimento"
+  // 3. "Pagar até", "Data de Vencimento", "Vence em", "Venc."
   const regexPagarAte =
-    /(?:PAGAR\s+AT[EÉ]|DATA\s+DE\s+VENCIMENTO|DT\.?\s*VENC\.?)\s*[:\s\-]{1,30}(\d{2})[\/\.\-](\d{2})[\/\.\-](\d{2,4})/i;
+    /(?:PAGAR\s+AT[EÉ]|DATA\s+DE\s+VENCIMENTO|DT\.?\s*VENC\.?|VENCE\s+EM|PAG[AÁ]VEL\s+AT[EÉ])[\s\S]{0,35}?(\d{1,2})[\/\.\-](\d{1,2})[\/\.\-](\d{2,4})/i;
   const matchPagar = texto.match(regexPagarAte);
   if (matchPagar) {
+    const dia = matchPagar[1].padStart(2, "0");
+    const mes = matchPagar[2].padStart(2, "0");
     let ano = matchPagar[3];
     if (ano.length === 2) ano = "20" + ano;
-    return `${ano}-${matchPagar[2]}-${matchPagar[1]}`;
+    return `${ano}-${mes}-${dia}`;
   }
 
-  // 6. Data próxima ao valor no recibo de pagamento / ficha de compensação
-  const regexSlip = /R\$\s*[\d\.\,]+\s+(\d{2})[\/\.\-](\d{2})[\/\.\-](\d{4})/;
+  // 4. Data ANTES da palavra Vencimento (ex: "15/10/2026 Vencimento", "20/12/2026 Vencimento")
+  const regexAntes =
+    /(\d{1,2})[\/\.\-](\d{1,2})[\/\.\-](\d{2,4})[\s\S]{0,25}?VENCIMENTO/i;
+  const matchAntes = texto.match(regexAntes);
+  if (matchAntes) {
+    const dia = matchAntes[1].padStart(2, "0");
+    const mes = matchAntes[2].padStart(2, "0");
+    let ano = matchAntes[3];
+    if (ano.length === 2) ano = "20" + ano;
+    return `${ano}-${mes}-${dia}`;
+  }
+
+  // 5. Linha de pagamento com R$ e data (ex: "R$ 350,00 20/12/2026")
+  const regexSlip = /R\$\s*[\d\.\,]+\s+(\d{1,2})[\/\.\-](\d{1,2})[\/\.\-](\d{2,4})/;
   const matchSlip = texto.match(regexSlip);
   if (matchSlip) {
-    return `${matchSlip[3]}-${matchSlip[2]}-${matchSlip[1]}`;
+    const dia = matchSlip[1].padStart(2, "0");
+    const mes = matchSlip[2].padStart(2, "0");
+    let ano = matchSlip[3];
+    if (ano.length === 2) ano = "20" + ano;
+    return `${ano}-${mes}-${dia}`;
+  }
+
+  // 6. Varredura geral de datas: em contas e boletos, a data de vencimento é a maior data encontrada
+  const regexAllDates = /\b(\d{1,2})[\/\.\-](\d{1,2})[\/\.\-](\d{2,4})\b/g;
+  let dMatch: RegExpExecArray | null;
+  const datasEncontradas: string[] = [];
+  while ((dMatch = regexAllDates.exec(texto)) !== null) {
+    const dia = dMatch[1].padStart(2, "0");
+    const mes = dMatch[2].padStart(2, "0");
+    let ano = dMatch[3];
+    if (ano.length === 2) ano = "20" + ano;
+    const diaNum = parseInt(dia, 10);
+    const mesNum = parseInt(mes, 10);
+    const anoNum = parseInt(ano, 10);
+    if (diaNum >= 1 && diaNum <= 31 && mesNum >= 1 && mesNum <= 12 && anoNum >= 2026 && anoNum <= 2028) {
+      datasEncontradas.push(`${ano}-${mes}-${dia}`);
+    }
+  }
+
+  if (datasEncontradas.length > 0) {
+    datasEncontradas.sort();
+    return datasEncontradas[datasEncontradas.length - 1];
   }
 
   return new Date().toISOString().slice(0, 10);
@@ -453,10 +513,10 @@ export function extrairVencimento(texto: string): string {
 export function extrairValor(texto: string): number {
   // Padrões explícitos com prioridade máxima
   const explicitRegexes = [
-    /(?:TOTAL\s+DA\s+(?:SUA\s+)?FATURA|TOTAL\s+FATURA\s+DE\s+[A-Za-zç]+|PAGAMENTO\s+TOTAL(?:\s*\(R\$\))?|VALOR\s+A\s+PAGAR|TOTAL\s+A\s+PAGAR|\(=\)\s*VALOR\s+(?:DO\s+DOCUMENTO|COBRADO)|VALOR\s+L[IÍ]QUIDO)\s*[:\s\-]{0,25}(?:R\$\s*)?(\d{1,3}(?:\.\d{3})*,\d{2})/i,
-    /(?:VALOR|TOTAL)\s+(?:R\$\s*)(\d{1,3}(?:\.\d{3})*,\d{2})/i,
-    /R\$\s*(\d{1,3}(?:\.\d{3})*,\d{2})\s*(?:TOTAL|VENCIMENTO|PAGÁVEL)/i,
-    /\(=\)\s*VALOR\s+DO\s+DOCUMENTO[^\d\n\r]{0,40}?(?:R\$\s*)?(\d{1,3}(?:\.\d{3})*,\d{2})/i,
+    /(?:TOTAL\s+DA\s+(?:SUA\s+)?FATURA|TOTAL\s+FATURA\s+DE\s+[A-Za-zç]+|PAGAMENTO\s+TOTAL(?:\s*\(R\$\))?|VALOR\s+A\s+PAGAR|TOTAL\s+A\s+PAGAR|\(=\)\s*VALOR\s+(?:DO\s+DOCUMENTO|COBRADO)|VALOR\s+L[IÍ]QUIDO|VALOR\s+TOTAL)[\s\S]{0,35}?(?:R\$\s*)?(\d{1,3}(?:\.\d{3})*,\d{2})/i,
+    /(?:VALOR|TOTAL)[\s\S]{0,25}?(?:R\$\s*)(\d{1,3}(?:\.\d{3})*,\d{2})/i,
+    /R\$\s*(\d{1,3}(?:\.\d{3})*,\d{2})[\s\S]{0,20}?(?:TOTAL|VENCIMENTO|PAGÁVEL|PAGAR)/i,
+    /\(=\)\s*VALOR\s+DO\s+DOCUMENTO[\s\S]{0,40}?(?:R\$\s*)?(\d{1,3}(?:\.\d{3})*,\d{2})/i,
   ];
 
   for (const reg of explicitRegexes) {
@@ -508,8 +568,20 @@ export function extrairValor(texto: string): number {
 export function analisarTextoBoletoOuConta(texto: string): DadosContaDetectada {
   const { categoria, descricao, isFaturaCartao, bancoCartao } = identificarCategoriaEEmissor(texto);
   const vencimento = extrairVencimento(texto);
-  const valor = extrairValor(texto);
+  let valor = extrairValor(texto);
   const mesAno = vencimento.slice(0, 7);
+
+  // Se for fatura de cartão e o valor retornado for 0 ou menor que a soma dos itens (ex: extratos em tabela),
+  // calcula exatamente pela soma das transações detectadas
+  if (isFaturaCartao) {
+    const comprasDetectadas = parsearLinhasFatura(texto, bancoCartao || "C6 Bank", mesAno);
+    if (comprasDetectadas.length > 0) {
+      const somaCompras = Math.round(comprasDetectadas.reduce((acc, c) => acc + c.valor, 0) * 100) / 100;
+      if (valor <= 0 || (valor < somaCompras && somaCompras > 0)) {
+        valor = somaCompras;
+      }
+    }
+  }
 
   return {
     descricao,
@@ -546,8 +618,69 @@ export function parsearLinhasFatura(
 ): Omit<CompraCartao, "id">[] {
   const resultados: Omit<CompraCartao, "id">[] = [];
   const titularAtual = banco === "C6 Bank" ? "Victor / Letícia" : "Sicredi Master";
+  const lines = texto.split("\n");
 
-  // 1. Padrão Sicredi: DD/ mmm HH:mm ... R$ XX,XX
+  // 1. Tabela Extrato Sicredi (Cartão Data Cidade Tipo Descrição Valor (R$) QUEM Data de pagamento)
+  const regSicrediTab =
+    /^(Cartão\s+(?:Virtual|Físico)\s+\S+)\s+(\d{1,2}\/[a-zA-Zç\.]+)\s+(?:.*?(?:Online|Presencial)\s+)?(.+?)(?:\s+(\d{1,2}\/\d{1,2}))?\s+R\$\s*([\d\.\,]+)\s+([A-Za-z]+)\s+(\d{1,2}\/\d{1,2}\/\d{2,4})$/i;
+
+  for (const line of lines) {
+    const m = line.match(regSicrediTab);
+    if (m) {
+      const q = m[6].toUpperCase();
+      const quemPaga: "VIC" | "LE" | "DIV" = q.startsWith("VIC") ? "VIC" : q.startsWith("LE") ? "LE" : "DIV";
+      const val = parseFloat(m[5].replace(/\./g, "").replace(",", "."));
+      if (val > 0) {
+        resultados.push({
+          mesFatura,
+          banco: "Sicredi",
+          titularCartao: m[1],
+          dataCompra: m[2],
+          descricao: m[3].trim(),
+          parcelaInfo: m[4] || undefined,
+          valor: val,
+          quemPaga,
+        });
+      }
+    }
+  }
+
+  if (resultados.length > 0) return resultados;
+
+  // 2. Tabela Extrato C6 Bank (Data Cartão Descrição da compra / parcela Valor (R$) Data de pagamento Quem paga)
+  const regC6Tab =
+    /^(\d{1,2}\/\d{1,2}\/\d{2,4})\s+(Leticia\s+Ribeiro|Victor\s+Roque|[A-Za-z\s]+?)\s+(.+?)\s+(-?\s*R\$\s*-?[\d\.\,]+)\s+(\d{1,2}\/\d{1,2}\/\d{2,4})\s+([A-Za-z]+)$/i;
+
+  for (const line of lines) {
+    const m = line.match(regC6Tab);
+    if (m) {
+      const q = m[6].toUpperCase();
+      const quemPaga: "VIC" | "LE" | "DIV" = q.startsWith("VIC") ? "VIC" : q.startsWith("LE") ? "LE" : "DIV";
+      const rawVal = m[4].replace(/R\$/i, "").replace(/\s+/g, "").replace(/\./g, "").replace(",", ".");
+      const val = parseFloat(rawVal);
+      const descFull = m[3].trim();
+      const parcelaMatch = descFull.match(/(?:-\s*Parcela\s*|\(Parcela\s*|\s+)(\d{1,2}\/\d{1,2})\)?/i);
+      const parcelaInfo = parcelaMatch ? parcelaMatch[1] : undefined;
+      const cleanDesc = descFull.replace(/(?:-\s*Parcela\s*|\(Parcela\s*|\s+)\d{1,2}\/\d{1,2}\)?/i, "").trim();
+
+      if (!isNaN(val) && val !== 0) {
+        resultados.push({
+          mesFatura,
+          banco: "C6 Bank",
+          titularCartao: m[2].trim(),
+          dataCompra: m[1],
+          descricao: cleanDesc || descFull,
+          parcelaInfo,
+          valor: val,
+          quemPaga,
+        });
+      }
+    }
+  }
+
+  if (resultados.length > 0) return resultados;
+
+  // 3. Padrão Sicredi Clássico: DD/ mmm HH:mm ... R$ XX,XX
   const regexSicredi =
     /(\d{2})\/\s*([a-zç]{3})\s+(?:\d{2}:\d{2}\s+)?(?:[A-Za-z\s]+?\s+)?(?:Presencial|Online)?\s*(.+?)\s+(?:(\d{1,2}\/\d{1,2})\s+)?(?:R\$\s*)(\d{1,3}(?:\.\d{3})*,\d{2})/gi;
 
@@ -675,8 +808,12 @@ export async function extrairDadosContrachequePDF(
   const pdfjsLib = await import("pdfjs-dist");
   if (typeof window !== "undefined") {
     try {
-      pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
-    } catch {}
+      pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
+    } catch {
+      try {
+        pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
+      } catch {}
+    }
   }
 
   const arrayBuffer = await file.arrayBuffer();
@@ -716,7 +853,24 @@ export async function extrairDadosContrachequePDF(
     linesMap.sort((a, b) => b.y - a.y);
     for (const line of linesMap) {
       line.items.sort((a, b) => a.x - b.x);
-      textoCompleto += line.items.map((it) => it.str).join(" ") + "\n";
+      let lineStr = "";
+      let lastRight: number | null = null;
+      for (const it of line.items) {
+        if (it.str === " ") {
+          if (!lineStr.endsWith(" ")) lineStr += " ";
+          lastRight = it.x + (it.w || 0);
+          continue;
+        }
+        // Se houver espaçamento real (> 2.5px) entre o fim do caractere anterior e o atual, adiciona espaço
+        if (lastRight !== null && it.x - lastRight > 2.5) {
+          if (!lineStr.endsWith(" ")) lineStr += " ";
+        }
+        lineStr += it.str;
+        lastRight = it.x + (it.w || 0);
+      }
+      if (lineStr.trim().length > 0) {
+        textoCompleto += lineStr.trim() + "\n";
+      }
     }
 
     const upperPage = textoCompleto.toUpperCase();

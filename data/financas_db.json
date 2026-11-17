@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-11-15T15:25:23.593Z",
+  "updatedAt": "2026-11-17T23:01:47.475Z",
   "data": {
     "contasCasa": [
       {
@@ -37,7 +37,7 @@
         "valor": 135.69,
         "vencimento": "2026-11-15",
         "quemPaga": "DIV",
-        "pago": true,
+        "pago": false,
         "status": "CONFIRMADO",
         "recorrente": true
       },
@@ -49,7 +49,7 @@
         "valor": 301.18,
         "vencimento": "2026-11-20",
         "quemPaga": "DIV",
-        "pago": true,
+        "pago": false,
         "status": "CONFIRMADO",
         "recorrente": true
       },
@@ -61,7 +61,7 @@
         "valor": 90,
         "vencimento": "2026-11-20",
         "quemPaga": "DIV",
-        "pago": true,
+        "pago": false,
         "status": "CONFIRMADO",
         "recorrente": true
       },
@@ -70,10 +70,10 @@
         "mesAno": "2026-11",
         "descricao": "Parcela Financiamento Carro",
         "categoria": "Carro",
-        "valor": 1,
+        "valor": 1100,
         "vencimento": "2026-11-20",
         "quemPaga": "DIV",
-        "pago": true,
+        "pago": false,
         "status": "CONFIRMADO",
         "recorrente": true
       },
@@ -545,24 +545,6 @@
     ],
     "poupanca": [
       {
-        "id": "1794755859371",
-        "data": "2026-12-20",
-        "descricao": "IPVA Creta",
-        "tipo": "SAIDA",
-        "valor": 3000,
-        "categoria": "Metas / Projetos",
-        "status": "PREVISTO"
-      },
-      {
-        "id": "1794755802955",
-        "data": "2026-11-13",
-        "descricao": "Entrada Creta",
-        "tipo": "SAIDA",
-        "valor": 45000,
-        "categoria": "Metas / Projetos",
-        "status": "CONFIRMADO"
-      },
-      {
         "id": "p-conf-8",
         "data": "2026-11-10",
         "descricao": "Diárias Op. Verão (10/11)",
@@ -737,13 +719,13 @@
     "salVictor": {
       "subsídioBase": 6429.95,
       "tipoSubstituicao": "1_SGT",
-      "diasSubstituicao": 300,
+      "diasSubstituicao": 30,
       "horasExtrasQtd": 0,
       "diasFerias": 0,
       "diariasQtd": 0,
       "descontoBanrisul": 1507.35,
       "outrosDescontosFixos": 123.12,
-      "incluirValeRefeicao": false,
+      "incluirValeRefeicao": true,
       "dependentesIR": 0
     },
     "salLeticia": {
@@ -755,7 +737,7 @@
       "diariasQtd": 0,
       "descontoBanrisul": 1145.89,
       "outrosDescontosFixos": 0,
-      "incluirValeRefeicao": false,
+      "incluirValeRefeicao": true,
       "dependentesIR": 0
     },
     "comprasCartao": [
@@ -1048,8 +1030,7 @@
         "parcelaInfo": "1/4",
         "valor": 87.25,
         "quemPaga": "VIC",
-        "isNova": false,
-        "pagadorDefinido": true
+        "isNova": true
       },
       {
         "id": "c6-28",
@@ -1307,8 +1288,7 @@
         "parcelaInfo": "1/2",
         "valor": 74.95,
         "quemPaga": "LE",
-        "isNova": false,
-        "pagadorDefinido": true
+        "isNova": true
       },
       {
         "id": "sic-21",
@@ -1615,27 +1595,15 @@
       },
       "2026-11": {
         "victorConfirmado": true,
-        "victorValorReal": 4703.11,
+        "victorValorReal": 4573.57,
+        "victorSalarioLiquidoFinal": 5417.49,
         "leticiaConfirmada": true,
-        "leticiaValorReal": 4692.89,
-        "leticiaSalarioLiquidoFinal": 4692.89,
-        "leticiaDiferencaCC": 35.45000000000073,
-        "victorSalarioLiquidoFinal": 5003.11,
-        "victorDiferencaCC": 129.53999999999996,
-        "victorExtras": [
-          {
-            "id": "1794754334175",
-            "descricao": "Emprestimo mae",
-            "valor": 300
-          }
-        ],
-        "victorGanhosExtras": 300
+        "leticiaValorReal": 4657.44,
+        "leticiaSalarioLiquidoFinal": 5501.36
       },
       "2026-12": {
         "victorConfirmado": false,
         "victorValorReal": 3316.4,
-        "leticiaConfirmada": false,
-        "leticiaValorReal": 4657.44,
         "victorExtras": [
           {
             "id": "ext-dez-mae",
@@ -1643,7 +1611,9 @@
             "valor": 300
           }
         ],
-        "victorGanhosExtras": 300
+        "victorGanhosExtras": 300,
+        "leticiaConfirmada": false,
+        "leticiaValorReal": 4657.44
       }
     },
     "faturasPagas": {

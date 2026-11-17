@@ -251,8 +251,8 @@ export default function DashboardPage() {
 
   // Carrega a versão mais recente do servidor (/api/finance-data)
   const carregarDoServidor = async (silencioso = false) => {
-    // Se o usuário realizou uma edição local nos últimos 6 segundos ou está salvando, NÃO sobrescreve com dados do servidor
-    if (Date.now() - ultimaEdicaoLocalRef.current < 6000 || estaSalvandoRef.current) {
+    // Se o usuário realizou uma edição local nos últimos 15 segundos ou está salvando, NÃO sobrescreve com dados do servidor
+    if (Date.now() - ultimaEdicaoLocalRef.current < 15000 || estaSalvandoRef.current) {
       return;
     }
     try {
@@ -261,10 +261,17 @@ export default function DashboardPage() {
       if (res.ok) {
         const json = await res.json();
         // Se durante a requisição o usuário realizou uma edição local, descarta a resposta para não perder inputs
-        if (Date.now() - ultimaEdicaoLocalRef.current < 6000 || estaSalvandoRef.current) {
+        if (Date.now() - ultimaEdicaoLocalRef.current < 15000 || estaSalvandoRef.current) {
           return;
         }
         if (json.success && json.data) {
+          // Se o servidor possuir timestamp, só aplica se for mais recente ou igual às nossas edições locais
+          if (json.updatedAt) {
+            const serverTs = new Date(json.updatedAt).getTime();
+            if (serverTs < ultimaEdicaoLocalRef.current) {
+              return;
+            }
+          }
           isCarregandoServidorRef.current = true;
           aplicarDados(json.data);
           localStorage.setItem("financas_victor_leticia_v3", JSON.stringify(json.data));
@@ -1458,8 +1465,9 @@ export default function DashboardPage() {
     setStatusPDF("Lendo arquivo PDF e analisando dados...");
     try {
       const dados = await extrairDadosQualquerPDF(file);
+      const mesAlvo = dados.mesAno || (dados.vencimento ? dados.vencimento.slice(0, 7) : mesSelecionado);
 
-      // Preenche os campos do formulário para o usuário
+      // Preenche os campos do formulário para visualização/conferência do usuário
       if (dados.valor > 0) {
         setNovoValor(dados.valor.toFixed(2));
       }
@@ -1473,16 +1481,18 @@ export default function DashboardPage() {
         setNovaCategoria(dados.categoria);
       }
 
-      // Se for fatura de cartão (C6 Bank ou Sicredi), também extrai as compras itemizadas para a aba Cartões
+      // Se for fatura de cartão (C6 Bank ou Sicredi)
       if (dados.isFaturaCartao && dados.bancoCartao) {
         const banco = dados.bancoCartao;
-        const compras = parsearLinhasFatura(dados.textoCompleto, banco, mesSelecionado);
+        const compras = parsearLinhasFatura(dados.textoCompleto, banco, mesAlvo);
+        const totalFatura = dados.valor > 0 ? dados.valor : (compras.length > 0 ? Math.round(compras.reduce((acc, c) => acc + c.valor, 0) * 100) / 100 : 0);
+
         if (compras.length > 0) {
           const comIds: CompraCartao[] = compras.map((item, idx) => {
             const jaExistia = comprasCartao.some(
               (c) =>
                 c.banco === banco &&
-                c.mesFatura < mesSelecionado &&
+                c.mesFatura < mesAlvo &&
                 c.descricao.toLowerCase().trim() === item.descricao.toLowerCase().trim()
             );
             const isNova = !jaExistia || (item.parcelaInfo && item.parcelaInfo.startsWith("1/"));
@@ -1492,18 +1502,93 @@ export default function DashboardPage() {
               isNova: Boolean(isNova),
             };
           });
-          setComprasCartao((prev) => [...comIds, ...prev]);
-          setStatusPDF(
-            `✓ Fatura de Cartão detectada: ${dados.descricao} • R$ ${dados.valor.toFixed(2)} • Vencimento: ${dados.vencimento} • ${compras.length} compras importadas para a Aba Cartões!`
-          );
-        } else {
-          setStatusPDF(
-            `✓ Fatura detectada: ${dados.descricao} • R$ ${dados.valor.toFixed(2)} • Vencimento: ${dados.vencimento}.`
-          );
+
+          // Substitui ou inclui as compras do mês alvo deste banco
+          setComprasCartao((prev) => [
+            ...comIds,
+            ...prev.filter((c) => !(c.banco === banco && c.mesFatura === mesAlvo)),
+          ]);
         }
-      } else {
+
+        // Registra automaticamente a fatura em contasCasa para o mês alvo
+        setContasCasa((prev) => {
+          const faturaId = `fatura-${banco === "Sicredi" ? "sicredi" : "c6"}-${mesAlvo}`;
+          const idx = prev.findIndex(
+            (c) =>
+              c.mesAno === mesAlvo &&
+              (c.id === faturaId ||
+                (c.categoria === "Fatura Cartão" &&
+                  c.descricao.toLowerCase().includes(banco === "Sicredi" ? "sicredi" : "c6")))
+          );
+          const contaFatura: ContaCasa = {
+            id: idx >= 0 ? prev[idx].id : faturaId,
+            mesAno: mesAlvo,
+            descricao: dados.descricao,
+            categoria: "Fatura Cartão",
+            valor: totalFatura,
+            vencimento: dados.vencimento,
+            quemPaga: "DIV",
+            pago: false,
+            status: "CONFIRMADO",
+            recorrente: true,
+          };
+          if (idx >= 0) {
+            const cp = [...prev];
+            cp[idx] = contaFatura;
+            return cp;
+          }
+          return [...prev, contaFatura];
+        });
+
+        // Alterna a visão para o mês alvo importado
+        setMesSelecionado(mesAlvo);
+        setMesVisualizadoContas(mesAlvo);
+        if (compras.length > 0) {
+          setBancoFiltro(banco);
+        }
+
         setStatusPDF(
-          `✓ PDF detectado com sucesso: ${dados.descricao} • R$ ${dados.valor > 0 ? dados.valor.toFixed(2) : "0,00"} • Vencimento: ${dados.vencimento || "Não identificado"}. Os campos foram preenchidos abaixo.`
+          `✓ ${dados.descricao} importada com sucesso para ${mesAlvo}! Valor: R$ ${totalFatura.toFixed(2)} • Vencimento: ${dados.vencimento} • ${compras.length} compras adicionadas a Cartões e salva no sistema.`
+        );
+      } else {
+        // Conta de consumo / boleto geral (Luz, Água, Internet, Carro, IPTU, etc.)
+        const valorConta = dados.valor > 0 ? dados.valor : 0;
+        const quemPagaConta = dados.categoria === "Telefone" ? "VIC" : "DIV";
+
+        setContasCasa((prev) => {
+          const idx = prev.findIndex(
+            (c) =>
+              c.mesAno === mesAlvo &&
+              (c.categoria === dados.categoria ||
+                c.descricao.toLowerCase().trim() === dados.descricao.toLowerCase().trim())
+          );
+          const idConta = idx >= 0 ? prev[idx].id : `conta-${Date.now()}`;
+          const novaConta: ContaCasa = {
+            id: idConta,
+            mesAno: mesAlvo,
+            descricao: dados.descricao,
+            categoria: dados.categoria,
+            valor: valorConta,
+            vencimento: dados.vencimento,
+            quemPaga: idx >= 0 ? prev[idx].quemPaga : quemPagaConta,
+            pago: idx >= 0 ? prev[idx].pago : false,
+            status: "CONFIRMADO",
+            recorrente: true,
+          };
+          if (idx >= 0) {
+            const cp = [...prev];
+            cp[idx] = novaConta;
+            return cp;
+          }
+          return [...prev, novaConta];
+        });
+
+        // Alterna a visão para o mês alvo importado
+        setMesSelecionado(mesAlvo);
+        setMesVisualizadoContas(mesAlvo);
+
+        setStatusPDF(
+          `✓ Conta "${dados.descricao}" importada para ${mesAlvo}! Valor: R$ ${valorConta.toFixed(2)} • Vencimento: ${dados.vencimento || "Padrão do mês"} • Salva no sistema.`
         );
       }
 
