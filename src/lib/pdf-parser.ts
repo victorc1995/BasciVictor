@@ -1,4 +1,4 @@
-import { CartaoBanco, CompraCartao, ContaCasa } from "./finance-engine";
+import { CartaoBanco, CompraCartao, ContaCasa, Pagador } from "./finance-engine";
 
 // Polyfill para navegadores ou ambientes sem Promise.withResolvers
 if (typeof Promise !== "undefined" && !(Promise as any).withResolvers) {
@@ -628,7 +628,7 @@ export function parsearLinhasFatura(
     const m = line.match(regSicrediTab);
     if (m) {
       const q = m[6].toUpperCase();
-      const quemPaga: "VIC" | "LE" | "DIV" = q.startsWith("VIC") ? "VIC" : q.startsWith("LE") ? "LE" : "DIV";
+      const quemPaga: Pagador = q.includes("POUP") ? "POUP" : q.startsWith("VIC") ? "VIC" : q.startsWith("LE") ? "LE" : "DIV";
       const val = parseFloat(m[5].replace(/\./g, "").replace(",", "."));
       if (val > 0) {
         resultados.push({
@@ -655,7 +655,7 @@ export function parsearLinhasFatura(
     const m = line.match(regC6Tab);
     if (m) {
       const q = m[6].toUpperCase();
-      const quemPaga: "VIC" | "LE" | "DIV" = q.startsWith("VIC") ? "VIC" : q.startsWith("LE") ? "LE" : "DIV";
+      const quemPaga: Pagador = q.includes("POUP") ? "POUP" : q.startsWith("VIC") ? "VIC" : q.startsWith("LE") ? "LE" : "DIV";
       const rawVal = m[4].replace(/R\$/i, "").replace(/\s+/g, "").replace(/\./g, "").replace(",", ".");
       const val = parseFloat(rawVal);
       const descFull = m[3].trim();

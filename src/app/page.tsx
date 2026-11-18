@@ -685,23 +685,88 @@ export default function DashboardPage() {
     setModalSalarioAberto(false);
   };
 
+  // Compras de Cartão com "Quem Paga = POUP" mapeadas automaticamente para a Poupança
+  const comprasPoupancaAuto = useMemo(() => {
+    return comprasCartao
+      .filter((c) => c.quemPaga === "POUP")
+      .map((c) => {
+        let dataIso = `${c.mesFatura}-05`;
+        if (c.dataCompra) {
+          const matchCompleto = c.dataCompra.match(/^(\d{1,2})[\/\.\-](\d{1,2})[\/\.\-](\d{2,4})$/);
+          if (matchCompleto) {
+            let ano = matchCompleto[3];
+            if (ano.length === 2) ano = "20" + ano;
+            dataIso = `${ano}-${matchCompleto[2].padStart(2, "0")}-${matchCompleto[1].padStart(2, "0")}`;
+          } else {
+            const matchDia = c.dataCompra.match(/^(\d{1,2})/);
+            if (matchDia) {
+              dataIso = `${c.mesFatura}-${matchDia[1].padStart(2, "0")}`;
+            }
+          }
+        }
+
+        const faturaChave = `${c.mesFatura}-${c.banco === "Sicredi" ? "sicredi" : "c6"}-vic`;
+        const faturaPaga = Boolean(faturasPagas[faturaChave] || c.mesFatura < mesAtualReal);
+        const parcStr = c.parcelaInfo ? ` (${c.parcelaInfo})` : "";
+
+        const mov: MovimentacaoPoupanca = {
+          id: `poup-cartao-${c.id}`,
+          data: dataIso,
+          descricao: `[Cartão ${c.banco}] ${c.descricao}${parcStr}`,
+          tipo: "SAIDA",
+          valor: c.valor,
+          categoria: "Cartão de Crédito",
+          status: faturaPaga ? "CONFIRMADO" : "PREVISTO",
+          origemCartao: c.banco,
+          origemCompraId: c.id,
+          mesFatura: c.mesFatura,
+        };
+        return mov;
+      });
+  }, [comprasCartao, faturasPagas, mesAtualReal]);
+
+  // Contas da casa com "Quem Paga = POUP" mapeadas automaticamente para a Poupança
+  const contasPoupancaAuto = useMemo(() => {
+    return contasCasa
+      .filter((c) => c.quemPaga === "POUP" && c.categoria !== "Fatura Cartão")
+      .map((c) => {
+        const mov: MovimentacaoPoupanca = {
+          id: `poup-conta-${c.id}`,
+          data: c.vencimento,
+          descricao: `[Conta Casa] ${c.descricao}`,
+          tipo: "SAIDA",
+          valor: c.valor,
+          categoria: "Outros",
+          status: c.pago ? "CONFIRMADO" : "PREVISTO",
+          origemContaId: c.id,
+          mesFatura: c.mesAno,
+        };
+        return mov;
+      });
+  }, [contasCasa]);
+
+  // Lista unificada completa de movimentações da poupança (manuais + automáticas de cartões e contas)
+  const poupancaCompleta = useMemo(() => {
+    return [...poupanca, ...comprasPoupancaAuto, ...contasPoupancaAuto];
+  }, [poupanca, comprasPoupancaAuto, contasPoupancaAuto]);
+
   // Cálculos de Poupança (Confirmado vs Previsão Futura)
   const resumoPoupanca = useMemo(() => {
-    const totalEntradasConfirmadas = poupanca
+    const totalEntradasConfirmadas = poupancaCompleta
       .filter((p) => p.tipo === "ENTRADA" && p.status !== "PREVISTO")
       .reduce((acc, p) => acc + p.valor, 0);
 
-    const totalSaidasConfirmadas = poupanca
+    const totalSaidasConfirmadas = poupancaCompleta
       .filter((p) => p.tipo === "SAIDA" && p.status !== "PREVISTO")
       .reduce((acc, p) => acc + p.valor, 0);
 
     const saldoConfirmado = totalEntradasConfirmadas - totalSaidasConfirmadas;
 
-    const totalEntradasPrevistas = poupanca
+    const totalEntradasPrevistas = poupancaCompleta
       .filter((p) => p.tipo === "ENTRADA" && p.status === "PREVISTO")
       .reduce((acc, p) => acc + p.valor, 0);
 
-    const totalSaidasPrevistas = poupanca
+    const totalSaidasPrevistas = poupancaCompleta
       .filter((p) => p.tipo === "SAIDA" && p.status === "PREVISTO")
       .reduce((acc, p) => acc + p.valor, 0);
 
@@ -711,6 +776,14 @@ export default function DashboardPage() {
     const reservaEmergencia = 5000;
     const saldoLivreConfirmado = Math.max(0, saldoConfirmado - reservaEmergencia);
     const saldoLivreProjetado = Math.max(0, saldoTotalProjetado - reservaEmergencia);
+
+    const totalComprasCartaoPoupanca = comprasPoupancaAuto.reduce((acc, c) => acc + c.valor, 0);
+    const comprasCartaoPoupancaConfirmadas = comprasPoupancaAuto
+      .filter((c) => c.status === "CONFIRMADO")
+      .reduce((acc, c) => acc + c.valor, 0);
+    const comprasCartaoPoupancaPrevistas = comprasPoupancaAuto
+      .filter((c) => c.status === "PREVISTO")
+      .reduce((acc, c) => acc + c.valor, 0);
 
     return {
       totalEntradasConfirmadas,
@@ -725,21 +798,24 @@ export default function DashboardPage() {
       saldoLivreConfirmado,
       saldoLivreProjetado,
       saldoLivreMetas: saldoLivreConfirmado,
+      totalComprasCartaoPoupanca,
+      comprasCartaoPoupancaConfirmadas,
+      comprasCartaoPoupancaPrevistas,
     };
-  }, [poupanca]);
+  }, [poupancaCompleta, comprasPoupancaAuto]);
 
   // Lançamentos Confirmados (Realizado: mais recente para a mais antiga) e Previsões Futuras (da data mais próxima para a mais longe)
   const poupancaRealizados = useMemo(() => {
-    return [...poupanca]
+    return [...poupancaCompleta]
       .filter((p) => p.status === "CONFIRMADO")
       .sort((a, b) => (b.data || "").localeCompare(a.data || ""));
-  }, [poupanca]);
+  }, [poupancaCompleta]);
 
   const poupancaPrevistos = useMemo(() => {
-    return [...poupanca]
+    return [...poupancaCompleta]
       .filter((p) => p.status === "PREVISTO")
       .sort((a, b) => (a.data || "").localeCompare(b.data || ""));
-  }, [poupanca]);
+  }, [poupancaCompleta]);
 
   // Projeção dos Próximos 6 Meses para a Aba 5 Contas
   const projecao6Meses = useMemo(() => {
@@ -974,13 +1050,16 @@ export default function DashboardPage() {
     let vicDireto = 0;
     let leDireto = 0;
     let divTotal = 0;
+    let poupTotal = 0;
 
     let c6Vic = 0;
     let c6Le = 0;
     let c6Div = 0;
+    let c6Poup = 0;
     let sicrediVic = 0;
     let sicrediLe = 0;
     let sicrediDiv = 0;
+    let sicrediPoup = 0;
 
     doMes.forEach((item) => {
       if (item.quemPaga === "VIC") {
@@ -991,6 +1070,10 @@ export default function DashboardPage() {
         leDireto += item.valor;
         if (item.banco === "C6 Bank") c6Le += item.valor;
         if (item.banco === "Sicredi") sicrediLe += item.valor;
+      } else if (item.quemPaga === "POUP") {
+        poupTotal += item.valor;
+        if (item.banco === "C6 Bank") c6Poup += item.valor;
+        if (item.banco === "Sicredi") sicrediPoup += item.valor;
       } else {
         divTotal += item.valor;
         if (item.banco === "C6 Bank") c6Div += item.valor;
@@ -1003,16 +1086,19 @@ export default function DashboardPage() {
       vicDireto,
       leDireto,
       divTotal,
+      poupTotal,
       metadeDiv,
       c6Vic,
       c6Le,
       c6Div,
+      c6Poup,
       sicrediVic,
       sicrediLe,
       sicrediDiv,
+      sicrediPoup,
       totalVictorCartoes: vicDireto + metadeDiv,
       totalLeticiaCartoes: leDireto + metadeDiv,
-      totalGeralCartoes: vicDireto + leDireto + divTotal,
+      totalGeralCartoes: vicDireto + leDireto + divTotal + poupTotal,
     };
   }, [comprasCartao, mesSelecionado]);
 
@@ -1024,10 +1110,12 @@ export default function DashboardPage() {
     let vicDireto = 0;
     let leDireto = 0;
     let divTotal = 0;
+    let poupTotal = 0;
 
     doCartao.forEach((item) => {
       if (item.quemPaga === "VIC") vicDireto += item.valor;
       else if (item.quemPaga === "LE") leDireto += item.valor;
+      else if (item.quemPaga === "POUP") poupTotal += item.valor;
       else divTotal += item.valor;
     });
 
@@ -1036,10 +1124,11 @@ export default function DashboardPage() {
       vicDireto,
       leDireto,
       divTotal,
+      poupTotal,
       metadeDiv,
       totalVictorCartao: vicDireto + metadeDiv,
       totalLeticiaCartao: leDireto + metadeDiv,
-      totalGeralCartao: vicDireto + leDireto + divTotal,
+      totalGeralCartao: vicDireto + leDireto + divTotal + poupTotal,
       quantidadeItens: doCartao.length,
     };
   }, [comprasCartao, bancoFiltro, mesSelecionado]);
@@ -1066,21 +1155,25 @@ export default function DashboardPage() {
     let casaVic = 0;
     let casaLe = 0;
     let casaDiv = 0;
+    let casaPoup = 0;
 
     contasDoMes.forEach((c) => {
       if (c.quemPaga === "VIC") casaVic += c.valor;
       else if (c.quemPaga === "LE") casaLe += c.valor;
+      else if (c.quemPaga === "POUP") casaPoup += c.valor;
       else casaDiv += c.valor;
     });
 
     const totalGastoVictor = casaVic + casaDiv / 2 + resumoCartoesMes.totalVictorCartoes;
     const totalGastoLeticia = casaLe + casaDiv / 2 + resumoCartoesMes.totalLeticiaCartoes;
-    const totalGastoCasal = totalGastoVictor + totalGastoLeticia;
+    const totalGastoPoupanca = casaPoup + resumoCartoesMes.poupTotal;
+    const totalGastoCasal = totalGastoVictor + totalGastoLeticia + totalGastoPoupanca;
 
     return {
       contasDoMes,
       totalGastoVictor,
       totalGastoLeticia,
+      totalGastoPoupanca,
       totalGastoCasal,
       saldoVictor: salarioVictorFinal - totalGastoVictor,
       saldoLeticia: salarioLeticiaFinal - totalGastoLeticia,
@@ -1620,35 +1713,98 @@ export default function DashboardPage() {
     setPoupValor("");
   };
 
-  const alternarStatusPoupanca = (id: string) => {
-    setPoupanca((prev) =>
-      prev.map((p) =>
-        p.id === id
-          ? { ...p, status: p.status === "PREVISTO" ? "CONFIRMADO" : "PREVISTO" }
-          : p
-      )
-    );
+  const alternarStatusPoupanca = (movOuId: MovimentacaoPoupanca | string) => {
+    const mov = typeof movOuId === "string" ? poupancaCompleta.find((p) => p.id === movOuId) : movOuId;
+    if (!mov) return;
+
+    if (mov.origemCompraId) {
+      const faturaChave = `${mov.mesFatura}-${mov.origemCartao === "Sicredi" ? "sicredi" : "c6"}-vic`;
+      setFaturasPagas((prev) => ({
+        ...prev,
+        [faturaChave]: !prev[faturaChave],
+      }));
+    } else if (mov.origemContaId) {
+      alternarPagoConta(mov.origemContaId, mov.mesFatura);
+    } else {
+      setPoupanca((prev) =>
+        prev.map((p) =>
+          p.id === mov.id
+            ? { ...p, status: p.status === "PREVISTO" ? "CONFIRMADO" : "PREVISTO" }
+            : p
+        )
+      );
+    }
+  };
+
+  const removerMovimentacaoPoupanca = (mov: MovimentacaoPoupanca) => {
+    if (mov.origemCompraId) {
+      setComprasCartao((prev) => prev.filter((c) => c.id !== mov.origemCompraId));
+    } else if (mov.origemContaId) {
+      setContasCasa((prev) => prev.filter((c) => c.id !== mov.origemContaId));
+    } else {
+      setPoupanca((prev) => prev.filter((p) => p.id !== mov.id));
+    }
+  };
+
+  const alterarDataPoupanca = (mov: MovimentacaoPoupanca, novaData: string) => {
+    if (mov.origemCompraId) {
+      const mesNovo = novaData.slice(0, 7);
+      setComprasCartao((prev) =>
+        prev.map((c) =>
+          c.id === mov.origemCompraId ? { ...c, mesFatura: mesNovo } : c
+        )
+      );
+    } else if (mov.origemContaId) {
+      const mesNovo = novaData.slice(0, 7);
+      setContasCasa((prev) =>
+        prev.map((c) =>
+          c.id === mov.origemContaId ? { ...c, vencimento: novaData, mesAno: mesNovo } : c
+        )
+      );
+    } else {
+      setPoupanca((prev) =>
+        prev.map((p) => (p.id === mov.id ? { ...p, data: novaData } : p))
+      );
+    }
   };
 
   const adicionarCompraCartaoPoupanca = (e: React.FormEvent) => {
     e.preventDefault();
-    const val = parseFloat(compraCartaoPoupValor.replace(",", "."));
-    if (!compraCartaoPoupDesc.trim() || isNaN(val) || val <= 0) return;
+    const valTotal = parseFloat(compraCartaoPoupValor.replace(",", "."));
+    if (!compraCartaoPoupDesc.trim() || isNaN(valTotal) || valTotal <= 0) return;
 
-    const parcTexto = compraCartaoPoupParcelas ? ` • ${compraCartaoPoupParcelas}x` : "";
-    const descFormatada = `[Cartão ${compraCartaoPoupBanco}${parcTexto}] ${compraCartaoPoupDesc.trim()}`;
+    const numParcelas = parseInt(compraCartaoPoupParcelas, 10) || 1;
+    const valorParcela = Math.round((valTotal / numParcelas) * 100) / 100;
+    const dataBase = compraCartaoPoupData || new Date().toISOString().slice(0, 10);
+    const anoBase = parseInt(dataBase.slice(0, 4), 10);
+    const mesBase = parseInt(dataBase.slice(5, 7), 10);
+    const diaBase = dataBase.slice(8, 10);
 
-    const novaMov: MovimentacaoPoupanca = {
-      id: `cartao-poup-${Date.now()}`,
-      data: compraCartaoPoupData || new Date().toISOString().slice(0, 10),
-      descricao: descFormatada,
-      tipo: "SAIDA",
-      valor: val,
-      categoria: "Metas / Projetos",
-      status: compraCartaoPoupStatus,
-    };
+    const novasCompras: CompraCartao[] = [];
+    for (let p = 1; p <= numParcelas; p++) {
+      const offset = p - 1;
+      const totalMeses = mesBase - 1 + offset;
+      const futYear = anoBase + Math.floor(totalMeses / 12);
+      const futMonth = (totalMeses % 12) + 1;
+      const futMesAno = `${futYear}-${String(futMonth).padStart(2, "0")}`;
 
-    setPoupanca((prev) => [novaMov, ...prev]);
+      const compra: CompraCartao = {
+        id: `compra-poup-${Date.now()}-${p}`,
+        banco: compraCartaoPoupBanco,
+        descricao: compraCartaoPoupDesc.trim(),
+        valor: p === numParcelas ? Math.round((valTotal - valorParcela * (numParcelas - 1)) * 100) / 100 : valorParcela,
+        dataCompra: `${diaBase}/${String(mesBase).padStart(2, "0")}/${anoBase}`,
+        mesFatura: futMesAno,
+        quemPaga: "POUP",
+        titularCartao: "Victor Roque",
+        parcelaInfo: numParcelas > 1 ? `${p}/${numParcelas}` : undefined,
+        isNova: false,
+        pagadorDefinido: true,
+      };
+      novasCompras.push(compra);
+    }
+
+    setComprasCartao((prev) => [...novasCompras, ...prev]);
     setCompraCartaoPoupDesc("");
     setCompraCartaoPoupValor("");
     setCompraCartaoPoupParcelas("1");
@@ -2279,6 +2435,39 @@ export default function DashboardPage() {
               </button>
             </form>
 
+            {/* Card Informativo: Compras de Cartão Vinculadas Automaticamente à Poupança */}
+            {resumoPoupanca.totalComprasCartaoPoupanca > 0 && (
+              <div className="bg-emerald-50/80 border border-emerald-200 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2.5 bg-emerald-100 text-emerald-800 rounded-xl">
+                    <CreditCard className="w-5 h-5 text-emerald-700" />
+                  </div>
+                  <div>
+                    <p className="font-bold text-slate-800 text-sm flex items-center gap-1.5">
+                      Compras de Cartão Vinculadas à Poupança
+                      <span className="bg-emerald-200 text-emerald-900 text-[10px] font-black px-2 py-0.5 rounded-full">
+                        {comprasPoupancaAuto.length} {comprasPoupancaAuto.length === 1 ? "compra" : "compras"}
+                      </span>
+                    </p>
+                    <p className="text-slate-500 mt-0.5">
+                      Compras marcadas como <strong>Poup</strong> nos cartões de crédito entram automaticamente neste extrato com valor e cartão.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-4 bg-white px-4 py-2 rounded-xl border border-emerald-200/80 shrink-0">
+                  <div>
+                    <span className="text-slate-400 block text-[10px] uppercase font-bold">Faturas Pagas (Realizado):</span>
+                    <strong className="text-emerald-700 text-sm font-black">{formatarMoeda(resumoPoupanca.comprasCartaoPoupancaConfirmadas)}</strong>
+                  </div>
+                  <div className="h-6 w-px bg-slate-200" />
+                  <div>
+                    <span className="text-slate-400 block text-[10px] uppercase font-bold">Faturas Abertas (Previsão):</span>
+                    <strong className="text-amber-700 text-sm font-black">{formatarMoeda(resumoPoupanca.comprasCartaoPoupancaPrevistas)}</strong>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Formulário Especial: Compra Parcelada no Cartão Paga com Saldo da Poupança */}
             <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 p-6 rounded-2xl shadow-sm">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
@@ -2399,8 +2588,19 @@ export default function DashboardPage() {
                   poupancaRealizados.map((mov) => (
                     <div key={mov.id} className="px-6 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-50/70 transition">
                       <div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <p className="text-sm font-semibold text-slate-800">{mov.descricao}</p>
+                          {mov.origemCartao && (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border bg-emerald-50 text-emerald-700 border-emerald-300 flex items-center gap-1">
+                              <CreditCard className="w-3 h-3 text-emerald-600" />
+                              {mov.origemCartao} {mov.mesFatura ? `• Fatura ${mov.mesFatura}` : ""}
+                            </span>
+                          )}
+                          {mov.origemContaId && (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border bg-sky-50 text-sky-700 border-sky-300 flex items-center gap-1">
+                              🏠 Conta da Casa
+                            </span>
+                          )}
                           <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border bg-emerald-100 text-emerald-800 border-emerald-300">
                             ✓ Confirmado
                           </span>
@@ -2409,12 +2609,7 @@ export default function DashboardPage() {
                           <input
                             type="date"
                             value={mov.data}
-                            onChange={(e) => {
-                              const novaData = e.target.value;
-                              setPoupanca((prev) =>
-                                prev.map((p) => (p.id === mov.id ? { ...p, data: novaData } : p))
-                              );
-                            }}
+                            onChange={(e) => alterarDataPoupanca(mov, e.target.value)}
                             className="text-xs text-slate-600 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded px-1.5 py-0.5 cursor-pointer font-medium"
                             title="Clique para editar a data deste lançamento"
                           />
@@ -2429,7 +2624,7 @@ export default function DashboardPage() {
 
                         <button
                           type="button"
-                          onClick={() => alternarStatusPoupanca(mov.id)}
+                          onClick={() => alternarStatusPoupanca(mov)}
                           className="text-[11px] text-slate-500 hover:text-amber-800 hover:bg-amber-50 border border-slate-200 hover:border-amber-300 px-2.5 py-1 rounded-lg transition"
                           title="Mover de volta para previsão futura"
                         >
@@ -2437,7 +2632,7 @@ export default function DashboardPage() {
                         </button>
 
                         <button
-                          onClick={() => setPoupanca((prev) => prev.filter((p) => p.id !== mov.id))}
+                          onClick={() => removerMovimentacaoPoupanca(mov)}
                           className="text-slate-400 hover:text-rose-600 p-1 rounded hover:bg-rose-50 transition"
                           title="Excluir lançamento"
                         >
@@ -2485,8 +2680,19 @@ export default function DashboardPage() {
                   poupancaPrevistos.map((mov) => (
                     <div key={mov.id} className="px-6 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-50/70 transition">
                       <div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <p className="text-sm font-semibold text-slate-800">{mov.descricao}</p>
+                          {mov.origemCartao && (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border bg-emerald-50 text-emerald-700 border-emerald-300 flex items-center gap-1">
+                              <CreditCard className="w-3 h-3 text-emerald-600" />
+                              {mov.origemCartao} {mov.mesFatura ? `• Fatura ${mov.mesFatura}` : ""}
+                            </span>
+                          )}
+                          {mov.origemContaId && (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border bg-sky-50 text-sky-700 border-sky-300 flex items-center gap-1">
+                              🏠 Conta da Casa
+                            </span>
+                          )}
                           <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border bg-amber-100 text-amber-800 border-amber-300">
                             ⏳ Previsão Futura
                           </span>
@@ -2495,12 +2701,7 @@ export default function DashboardPage() {
                           <input
                             type="date"
                             value={mov.data}
-                            onChange={(e) => {
-                              const novaData = e.target.value;
-                              setPoupanca((prev) =>
-                                prev.map((p) => (p.id === mov.id ? { ...p, data: novaData } : p))
-                              );
-                            }}
+                            onChange={(e) => alterarDataPoupanca(mov, e.target.value)}
                             className="text-xs text-slate-600 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded px-1.5 py-0.5 cursor-pointer font-medium"
                             title="Clique para editar a data desta previsão"
                           />
@@ -2516,7 +2717,7 @@ export default function DashboardPage() {
                         {/* Botão de confirmação com 1 clique para previsões futuras */}
                         <button
                           type="button"
-                          onClick={() => alternarStatusPoupanca(mov.id)}
+                          onClick={() => alternarStatusPoupanca(mov)}
                           className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-3 py-1.5 rounded-lg shadow-sm transition flex items-center gap-1.5"
                           title="Confirmar que o valor entrou/saiu na conta hoje e mover para o Extrato Realizado"
                         >
@@ -2525,7 +2726,7 @@ export default function DashboardPage() {
                         </button>
 
                         <button
-                          onClick={() => setPoupanca((prev) => prev.filter((p) => p.id !== mov.id))}
+                          onClick={() => removerMovimentacaoPoupanca(mov)}
                           className="text-slate-400 hover:text-rose-600 p-1 rounded hover:bg-rose-50 transition"
                           title="Excluir lançamento"
                         >
@@ -2714,8 +2915,8 @@ export default function DashboardPage() {
                   </span>
                 </div>
 
-                {/* Cards de Divisão do Cartão Selecionado (VIC / LE / DIV 50-50) */}
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                {/* Cards de Divisão do Cartão Selecionado (VIC / LE / DIV 50-50 / POUP) */}
+                <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
                   <div className="bg-white p-4 rounded-2xl border border-slate-200">
                     <span className="text-xs text-slate-400 font-semibold uppercase">Exclusivo Victor ({bancoFiltro})</span>
                     <p className="text-xl font-bold text-blue-600 mt-1">{formatarMoeda(resumoCartaoSelecionado.vicDireto)}</p>
@@ -2731,14 +2932,26 @@ export default function DashboardPage() {
                     <p className="text-xl font-bold text-amber-600 mt-1">{formatarMoeda(resumoCartaoSelecionado.divTotal)}</p>
                     <p className="text-xs text-slate-500 mt-1">Metade p/ cada: {formatarMoeda(resumoCartaoSelecionado.metadeDiv)}</p>
                   </div>
+                  <div className="bg-white p-4 rounded-2xl border border-emerald-200 bg-emerald-50/30">
+                    <span className="text-xs text-emerald-700 font-semibold uppercase flex items-center gap-1">
+                      <PiggyBank className="w-3.5 h-3.5 text-emerald-600" /> Da Poupança ({bancoFiltro})
+                    </span>
+                    <p className="text-xl font-bold text-emerald-600 mt-1">{formatarMoeda(resumoCartaoSelecionado.poupTotal)}</p>
+                    <p className="text-[11px] text-emerald-600/80 mt-1">Abatido da Poupança & Metas</p>
+                  </div>
                   <div className="bg-slate-900 text-white p-4 rounded-2xl">
                     <span className="text-xs text-slate-400 font-semibold uppercase">Rateio {bancoFiltro}</span>
                     <p className="text-sm mt-1">
-                      Victor: <strong className="text-emerald-400">{formatarMoeda(resumoCartaoSelecionado.totalVictorCartao)}</strong>
+                      Victor: <strong className="text-blue-400">{formatarMoeda(resumoCartaoSelecionado.totalVictorCartao)}</strong>
                     </p>
                     <p className="text-sm">
-                      Letícia: <strong className="text-emerald-400">{formatarMoeda(resumoCartaoSelecionado.totalLeticiaCartao)}</strong>
+                      Letícia: <strong className="text-purple-400">{formatarMoeda(resumoCartaoSelecionado.totalLeticiaCartao)}</strong>
                     </p>
+                    {resumoCartaoSelecionado.poupTotal > 0 && (
+                      <p className="text-xs text-emerald-400 mt-1 border-t border-slate-800 pt-1">
+                        Poupança: <strong>{formatarMoeda(resumoCartaoSelecionado.poupTotal)}</strong>
+                      </p>
+                    )}
                   </div>
                 </div>
 
@@ -2748,7 +2961,7 @@ export default function DashboardPage() {
                     <div className="flex items-center gap-2 font-medium">
                       <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
                       <span>
-                        Atenção: <strong>{comprasCartao.filter((c) => c.banco === bancoFiltro && c.mesFatura === mesSelecionado && c.isNova).length} nova(s) compra(s) detectada(s)</strong> nesta fatura em relação ao mês anterior (destacadas em vermelho). Clique em <strong>VIC</strong>, <strong>LE</strong> ou <strong>DIV</strong> para definir quem paga.
+                        Atenção: <strong>{comprasCartao.filter((c) => c.banco === bancoFiltro && c.mesFatura === mesSelecionado && c.isNova).length} nova(s) compra(s) detectada(s)</strong> nesta fatura em relação ao mês anterior (destacadas em vermelho). Clique em <strong>VIC</strong>, <strong>LE</strong>, <strong>DIV</strong> ou <strong>POUP</strong> para definir quem paga.
                       </span>
                     </div>
                   </div>
@@ -2758,7 +2971,7 @@ export default function DashboardPage() {
                 <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
                   <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
                     <h3 className="font-bold text-slate-800">Lançamentos — {bancoFiltro} ({mesSelecionado})</h3>
-                    <span className="text-xs text-slate-500">Clique em VIC / LE / DIV para definir quem paga e recalcular na hora</span>
+                    <span className="text-xs text-slate-500">Clique em VIC / LE / DIV / POUP para definir quem paga e recalcular na hora</span>
                   </div>
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm text-left">
@@ -2806,7 +3019,7 @@ export default function DashboardPage() {
                                 </td>
                                 <td className="px-6 py-3">
                                   <div className="inline-flex rounded-lg border border-slate-200 overflow-hidden shadow-sm">
-                                    {(["VIC", "LE", "DIV"] as Pagador[]).map((opcao) => (
+                                    {(["VIC", "LE", "DIV", "POUP"] as Pagador[]).map((opcao) => (
                                       <button
                                         key={opcao}
                                         onClick={() => alterarPagadorCompra(compra.id, opcao)}
@@ -2816,11 +3029,13 @@ export default function DashboardPage() {
                                               ? "bg-blue-600 text-white"
                                               : opcao === "LE"
                                               ? "bg-purple-600 text-white"
-                                              : "bg-amber-500 text-white"
+                                              : opcao === "DIV"
+                                              ? "bg-amber-500 text-white"
+                                              : "bg-emerald-600 text-white"
                                             : "bg-white text-slate-500 hover:bg-slate-100"
                                         }`}
                                       >
-                                        {opcao}
+                                        {opcao === "POUP" ? "Poup" : opcao}
                                       </button>
                                     ))}
                                   </div>
@@ -2924,6 +3139,15 @@ export default function DashboardPage() {
                         <span className="text-slate-500 block text-[10px]">Letícia:</span>
                         <strong className="text-purple-600">{formatarMoeda(dadosMesProjecaoCartao.totalLeticia)}</strong>
                       </div>
+                      {Boolean(dadosMesProjecaoCartao.totalPoupanca && dadosMesProjecaoCartao.totalPoupanca > 0) && (
+                        <>
+                          <div className="h-6 w-px bg-slate-200" />
+                          <div>
+                            <span className="text-slate-500 block text-[10px]">Poupança:</span>
+                            <strong className="text-emerald-600">{formatarMoeda(dadosMesProjecaoCartao.totalPoupanca || 0)}</strong>
+                          </div>
+                        </>
+                      )}
                       <div className="h-6 w-px bg-slate-200" />
                       <div>
                         <span className="text-slate-500 block text-[10px]">Total:</span>
@@ -2941,7 +3165,7 @@ export default function DashboardPage() {
                           <th className="px-6 py-3">Parcela</th>
                           <th className="px-6 py-3">Valor da Parcela</th>
                           <th className="px-6 py-3">Quem Paga</th>
-                          <th className="px-6 py-3 text-right">Rateio (Victor / Letícia)</th>
+                          <th className="px-6 py-3 text-right">Rateio (Victor / Letícia / Poupança)</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
@@ -2969,16 +3193,24 @@ export default function DashboardPage() {
                                       ? "bg-blue-50 text-blue-700"
                                       : parc.quemPaga === "LE"
                                       ? "bg-purple-50 text-purple-700"
+                                      : parc.quemPaga === "POUP"
+                                      ? "bg-emerald-50 text-emerald-700"
                                       : "bg-amber-50 text-amber-700"
                                   }`}
                                 >
-                                  {parc.quemPaga === "DIV" ? "Dividido (50/50)" : parc.quemPaga === "VIC" ? "100% Victor" : "100% Letícia"}
+                                  {parc.quemPaga === "DIV" ? "Dividido (50/50)" : parc.quemPaga === "VIC" ? "100% Victor" : parc.quemPaga === "LE" ? "100% Letícia" : "Poupança"}
                                 </span>
                               </td>
                               <td className="px-6 py-3 text-right text-xs">
-                                <span className="text-blue-600 font-bold">V: {formatarMoeda(parc.valorVictor)}</span>
-                                <span className="text-slate-300 mx-1.5">•</span>
-                                <span className="text-purple-600 font-bold">L: {formatarMoeda(parc.valorLeticia)}</span>
+                                {parc.quemPaga === "POUP" ? (
+                                  <span className="text-emerald-600 font-bold">Poupança: {formatarMoeda(parc.valor)}</span>
+                                ) : (
+                                  <>
+                                    <span className="text-blue-600 font-bold">V: {formatarMoeda(parc.valorVictor)}</span>
+                                    <span className="text-slate-300 mx-1.5">•</span>
+                                    <span className="text-purple-600 font-bold">L: {formatarMoeda(parc.valorLeticia)}</span>
+                                  </>
+                                )}
                               </td>
                             </tr>
                           ))
@@ -3100,6 +3332,12 @@ export default function DashboardPage() {
                           <span>Letícia (Parc):</span>
                           <span>{formatarMoeda(proj.totalParcelasLeticia)}</span>
                         </div>
+                        {Boolean(proj.totalParcelasPoupanca && proj.totalParcelasPoupanca > 0) && (
+                          <div className="flex justify-between text-emerald-600 font-semibold">
+                            <span>Poupança (Parc):</span>
+                            <span>{formatarMoeda(proj.totalParcelasPoupanca || 0)}</span>
+                          </div>
+                        )}
                       </div>
                     </button>
                   );
@@ -3170,8 +3408,8 @@ export default function DashboardPage() {
                               </div>
                               <p className="text-xs text-slate-500 mt-0.5">
                                 Venc: {c.vencimento.split("-").reverse().join("/")} • {c.categoria} •{" "}
-                                <span className={c.quemPaga === "DIV" ? "text-amber-700 font-semibold" : "text-emerald-700 font-semibold"}>
-                                  {c.quemPaga === "DIV" ? "50/50" : c.quemPaga === "VIC" ? "Victor" : "Letícia"}
+                                <span className={c.quemPaga === "DIV" ? "text-amber-700 font-semibold" : c.quemPaga === "POUP" ? "text-emerald-700 font-semibold" : c.quemPaga === "VIC" ? "text-blue-700 font-semibold" : "text-purple-700 font-semibold"}>
+                                  {c.quemPaga === "DIV" ? "50/50" : c.quemPaga === "VIC" ? "Victor" : c.quemPaga === "LE" ? "Letícia" : "Poupança"}
                                 </span>
                               </p>
                             </div>
@@ -3267,13 +3505,15 @@ export default function DashboardPage() {
                                   ? "bg-blue-50 text-blue-700"
                                   : p.quemPaga === "LE"
                                   ? "bg-purple-50 text-purple-700"
+                                  : p.quemPaga === "POUP"
+                                  ? "bg-emerald-50 text-emerald-700"
                                   : "bg-amber-50 text-amber-700"
                               }`}
                             >
-                              {p.quemPaga === "DIV" ? "Dividido 50/50" : p.quemPaga === "VIC" ? "100% Victor" : "100% Letícia"}
+                              {p.quemPaga === "DIV" ? "Dividido 50/50" : p.quemPaga === "VIC" ? "100% Victor" : p.quemPaga === "LE" ? "100% Letícia" : "Poupança"}
                             </span>
                             <span className="text-[10px] font-semibold text-slate-500">
-                              (V: {formatarMoeda(p.valorVictor)} • L: {formatarMoeda(p.valorLeticia)})
+                              {p.quemPaga === "POUP" ? `(Poupança: ${formatarMoeda(p.valor)})` : `(V: ${formatarMoeda(p.valorVictor)} • L: ${formatarMoeda(p.valorLeticia)})`}
                             </span>
                           </div>
                         </div>
@@ -4035,7 +4275,7 @@ export default function DashboardPage() {
                                       <div>
                                         <p className="font-semibold text-slate-800">{c.descricao}</p>
                                         <span className="text-[10px] text-slate-400">
-                                          Venc: {c.vencimento.split("-").reverse().join("/")} • {c.quemPaga === "DIV" ? "Dividido (50%)" : c.quemPaga === "VIC" ? "100% Victor" : "100% Letícia"}
+                                          Venc: {c.vencimento.split("-").reverse().join("/")} • {c.quemPaga === "DIV" ? "Dividido (50%)" : c.quemPaga === "VIC" ? "100% Victor" : c.quemPaga === "LE" ? "100% Letícia" : "Poupança"}
                                         </span>
                                       </div>
                                       <span className="font-bold text-slate-900">{formatarMoeda(valPerfil)}</span>
@@ -4068,7 +4308,7 @@ export default function DashboardPage() {
                                         <div>
                                           <p className="font-semibold text-slate-800">{parc.descricao}</p>
                                           <span className="text-[10px] text-slate-400">
-                                            {parc.banco} • Parcela {parc.parcelaAtual}/{parc.totalParcelas} • {parc.quemPaga === "DIV" ? "Dividido" : parc.quemPaga === "VIC" ? "Victor" : "Letícia"}
+                                            {parc.banco} • Parcela {parc.parcelaAtual}/{parc.totalParcelas} • {parc.quemPaga === "DIV" ? "Dividido" : parc.quemPaga === "VIC" ? "Victor" : parc.quemPaga === "LE" ? "Letícia" : "Poupança"}
                                           </span>
                                         </div>
                                         <span className="font-bold text-slate-900">{formatarMoeda(valPerfil)}</span>
@@ -4370,6 +4610,7 @@ export default function DashboardPage() {
                     <option value="DIV">Dividido (50% Victor / 50% Letícia)</option>
                     <option value="VIC">100% Victor</option>
                     <option value="LE">100% Letícia</option>
+                    <option value="POUP">Poupança (Abater da Poupança)</option>
                   </select>
                 </div>
 
@@ -4556,6 +4797,7 @@ export default function DashboardPage() {
                   <option value="DIV">Dividido (50% Victor / 50% Letícia)</option>
                   <option value="VIC">100% Victor</option>
                   <option value="LE">100% Letícia</option>
+                  <option value="POUP">Poupança (Abater da Poupança)</option>
                 </select>
               </div>
 

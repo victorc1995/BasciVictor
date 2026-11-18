@@ -1,4 +1,4 @@
-export type Pagador = "VIC" | "LE" | "DIV";
+export type Pagador = "VIC" | "LE" | "DIV" | "POUP";
 export type CartaoBanco = "C6 Bank" | "Sicredi";
 
 export interface ContaCasa {
@@ -23,8 +23,12 @@ export interface MovimentacaoPoupanca {
   descricao: string;
   tipo: "ENTRADA" | "SAIDA";
   valor: number;
-  categoria: "Reserva Emergência" | "Metas / Projetos" | "Diárias Op. Verão" | "Compensação Banrisul (Difa)" | "13º / Extras" | "Cartão de Crédito" | "Renda Extra" | "Salário / 13º" | "Outros";
+  categoria: "Reserva Emergência" | "Metas / Projetos" | "Diárias Op. Verão" | "Compensação Banrisul (Difa)" | "13º / Extras" | "Cartão de Crédito" | "Renda Extra" | "Salário / 13º" | "Outros" | (string & {});
   status?: "CONFIRMADO" | "PREVISTO";
+  origemCartao?: CartaoBanco;
+  origemCompraId?: string;
+  origemContaId?: string;
+  mesFatura?: string;
 }
 
 export interface CompraCartao {
@@ -223,10 +227,13 @@ export interface ProjecaoMesContas {
   isConfirmado: boolean;
   totalParcelasVictor: number;
   totalParcelasLeticia: number;
+  totalParcelasPoupanca?: number;
   totalContasVictor: number;
   totalContasLeticia: number;
+  totalContasPoupanca?: number;
   totalGeralVictor: number;
   totalGeralLeticia: number;
+  totalGeralPoupanca?: number;
   contas: ContaCasa[];
   parcelasProjetadas: {
     id: string;
@@ -239,6 +246,7 @@ export interface ProjecaoMesContas {
     quemPaga: Pagador;
     valorVictor: number;
     valorLeticia: number;
+    valorPoupanca?: number;
   }[];
 }
 
@@ -250,6 +258,7 @@ export interface ProjecaoFaturaCartaoMes {
   totalVictor: number;
   totalLeticia: number;
   totalDividido: number;
+  totalPoupanca?: number;
   totalExclusivoVictor: number;
   totalExclusivoLeticia: number;
   parcelas: {
@@ -262,6 +271,7 @@ export interface ProjecaoFaturaCartaoMes {
     quemPaga: Pagador;
     valorVictor: number;
     valorLeticia: number;
+    valorPoupanca?: number;
   }[];
 }
 
@@ -474,6 +484,7 @@ export function calcularProjecao6Meses(
         const pInfo = parseParcela(c.parcelaInfo);
         const valorVictor = c.quemPaga === "VIC" ? c.valor : c.quemPaga === "DIV" ? c.valor / 2 : 0;
         const valorLeticia = c.quemPaga === "LE" ? c.valor : c.quemPaga === "DIV" ? c.valor / 2 : 0;
+        const valorPoupanca = c.quemPaga === "POUP" ? c.valor : 0;
         parcelasProjetadas.push({
           id: c.id,
           descricao: c.descricao,
@@ -485,6 +496,7 @@ export function calcularProjecao6Meses(
           quemPaga: c.quemPaga,
           valorVictor,
           valorLeticia,
+          valorPoupanca,
         });
         continue;
       }
@@ -499,6 +511,7 @@ export function calcularProjecao6Meses(
             if (c.banco === "Sicredi") totalFaturaSicredi += c.valor;
             const valorVictor = c.quemPaga === "VIC" ? c.valor : c.quemPaga === "DIV" ? c.valor / 2 : 0;
             const valorLeticia = c.quemPaga === "LE" ? c.valor : c.quemPaga === "DIV" ? c.valor / 2 : 0;
+            const valorPoupanca = c.quemPaga === "POUP" ? c.valor : 0;
             parcelasProjetadas.push({
               id: `${c.id}-off${offset}`,
               descricao: c.descricao,
@@ -510,6 +523,7 @@ export function calcularProjecao6Meses(
               quemPaga: c.quemPaga,
               valorVictor,
               valorLeticia,
+              valorPoupanca,
             });
           }
         }
@@ -527,9 +541,10 @@ export function calcularProjecao6Meses(
       ? valorFaturaCadastrada
       : totalFaturaC6 + totalFaturaSicredi;
 
-    // Separação de Gastos Victor vs Letícia no Mês Projetado
+    // Separação de Gastos Victor vs Letícia vs Poupança no Mês Projetado
     const totalParcelasVictor = parcelasProjetadas.reduce((acc, p) => acc + p.valorVictor, 0);
     const totalParcelasLeticia = parcelasProjetadas.reduce((acc, p) => acc + p.valorLeticia, 0);
+    const totalParcelasPoupanca = parcelasProjetadas.reduce((acc, p) => acc + (p.valorPoupanca || 0), 0);
 
     const totalContasVictor = contasDoMes
       .filter((c) => c.categoria !== "Fatura Cartão")
@@ -539,8 +554,13 @@ export function calcularProjecao6Meses(
       .filter((c) => c.categoria !== "Fatura Cartão")
       .reduce((acc, c) => acc + (c.quemPaga === "LE" ? c.valor : c.quemPaga === "DIV" ? c.valor / 2 : 0), 0);
 
+    const totalContasPoupanca = contasDoMes
+      .filter((c) => c.categoria !== "Fatura Cartão")
+      .reduce((acc, c) => acc + (c.quemPaga === "POUP" ? c.valor : 0), 0);
+
     const totalGeralVictor = totalContasVictor + totalParcelasVictor;
     const totalGeralLeticia = totalContasLeticia + totalParcelasLeticia;
+    const totalGeralPoupanca = totalContasPoupanca + totalParcelasPoupanca;
 
     resultado.push({
       mesAno: mesAlvo,
@@ -552,10 +572,13 @@ export function calcularProjecao6Meses(
       isConfirmado: offset === 0 || hasFaturaConfirmada,
       totalParcelasVictor,
       totalParcelasLeticia,
+      totalParcelasPoupanca,
       totalContasVictor,
       totalContasLeticia,
+      totalContasPoupanca,
       totalGeralVictor,
       totalGeralLeticia,
+      totalGeralPoupanca,
       contas: contasDoMes,
       parcelasProjetadas,
     });
@@ -583,6 +606,7 @@ export function calcularProjecaoParcelasCartao(
     let totalExclusivoVictor = 0;
     let totalExclusivoLeticia = 0;
     let totalDividido = 0;
+    let totalPoupanca = 0;
 
     for (const c of compras) {
       if (c.banco !== banco) continue;
@@ -616,9 +640,11 @@ export function calcularProjecaoParcelasCartao(
       if (incluiNoMes) {
         const valorVictor = c.quemPaga === "VIC" ? c.valor : c.quemPaga === "DIV" ? c.valor / 2 : 0;
         const valorLeticia = c.quemPaga === "LE" ? c.valor : c.quemPaga === "DIV" ? c.valor / 2 : 0;
+        const valorPoupanca = c.quemPaga === "POUP" ? c.valor : 0;
 
         if (c.quemPaga === "VIC") totalExclusivoVictor += c.valor;
         else if (c.quemPaga === "LE") totalExclusivoLeticia += c.valor;
+        else if (c.quemPaga === "POUP") totalPoupanca += c.valor;
         else totalDividido += c.valor;
 
         parcelasMes.push({
@@ -631,6 +657,7 @@ export function calcularProjecaoParcelasCartao(
           quemPaga: c.quemPaga,
           valorVictor,
           valorLeticia,
+          valorPoupanca,
         });
       }
     }
@@ -640,10 +667,11 @@ export function calcularProjecaoParcelasCartao(
       mesAno: mesAlvo,
       label,
       banco,
-      totalFatura: totalExclusivoVictor + totalExclusivoLeticia + totalDividido,
+      totalFatura: totalExclusivoVictor + totalExclusivoLeticia + totalDividido + totalPoupanca,
       totalVictor: totalExclusivoVictor + metadeDiv,
       totalLeticia: totalExclusivoLeticia + metadeDiv,
       totalDividido,
+      totalPoupanca,
       totalExclusivoVictor,
       totalExclusivoLeticia,
       parcelas: parcelasMes,
