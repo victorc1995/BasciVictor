@@ -165,12 +165,15 @@ export default function DashboardPage() {
   const [editVencimento, setEditVencimento] = useState("");
   const [editQuemPaga, setEditQuemPaga] = useState<Pagador>("DIV");
 
-  // Status de Sincronização Multi-Dispositivo e Servidor Central
+  // Status de Sincronização Multi-Dispositivo e Servidor Central (Google Sheets em Tempo Real)
   const [syncStatus, setSyncStatus] = useState<"sincronizado" | "salvando" | "offline" | "carregando">("carregando");
   const [ultimaSincronizacao, setUltimaSincronizacao] = useState<string | null>(null);
   const isCarregandoServidorRef = useRef(false);
-  const ultimaEdicaoLocalRef = useRef<number>(0);
   const estaSalvandoRef = useRef<boolean>(false);
+  const houveEdicaoLocalRef = useRef<boolean>(false);
+  const ultimaEdicaoLocalRef = useRef<number>(0);
+  const timestampVersaoLocalRef = useRef<number>(0);
+  const primeiraCargaConcluidaRef = useRef<boolean>(false);
 
   // Aplica dados sanitizados aos estados do React
   const aplicarDados = (parsed: any) => {
@@ -249,38 +252,47 @@ export default function DashboardPage() {
     if (parsed.contasExcluidas && Array.isArray(parsed.contasExcluidas)) setContasExcluidas(parsed.contasExcluidas);
   };
 
-  // Carrega a versão mais recente do servidor (/api/finance-data)
-  const carregarDoServidor = async (silencioso = false) => {
-    // Se o usuário realizou uma edição local nos últimos 15 segundos ou está salvando, NÃO sobrescreve com dados do servidor
-    if (Date.now() - ultimaEdicaoLocalRef.current < 15000 || estaSalvandoRef.current) {
+  // Carrega a versão mais recente do servidor (/api/finance-data -> Google Sheets)
+  const carregarDoServidor = async (silencioso = false, forcar = false) => {
+    // Se o usuário está no meio de um salvamento ou editando localmente no exato momento, não sobrescreve
+    if (!forcar && (estaSalvandoRef.current || houveEdicaoLocalRef.current)) {
       return;
     }
+
     try {
       if (!silencioso) setSyncStatus("carregando");
-      const res = await fetch("/api/finance-data");
+      // Cache-buster para garantir que navegadores móveis (Safari/Chrome iOS) não sirvam cache HTTP estático
+      const res = await fetch(`/api/finance-data?_t=${Date.now()}`, {
+        cache: "no-store",
+      });
+
       if (res.ok) {
         const json = await res.json();
-        // Se durante a requisição o usuário realizou uma edição local, descarta a resposta para não perder inputs
-        if (Date.now() - ultimaEdicaoLocalRef.current < 15000 || estaSalvandoRef.current) {
+        // Se durante a requisição o usuário iniciou uma nova edição, não sobrescreve
+        if (!forcar && (estaSalvandoRef.current || houveEdicaoLocalRef.current)) {
           return;
         }
+
         if (json.success && json.data) {
-          // Se o servidor possuir timestamp, só aplica se for mais recente ou igual às nossas edições locais
-          if (json.updatedAt) {
-            const serverTs = new Date(json.updatedAt).getTime();
-            if (serverTs < ultimaEdicaoLocalRef.current) {
-              return;
-            }
+          const serverTs = json.updatedAt ? new Date(json.updatedAt).getTime() : 0;
+          // Aplica do servidor se for mais recente ou se não temos timestamp local definido ou se forçado
+          if (forcar || serverTs >= timestampVersaoLocalRef.current || timestampVersaoLocalRef.current === 0) {
+            isCarregandoServidorRef.current = true;
+            aplicarDados(json.data);
+            timestampVersaoLocalRef.current = serverTs;
+            try {
+              localStorage.setItem(
+                "financas_victor_leticia_v3",
+                JSON.stringify({ ...json.data, _updatedAt: json.updatedAt })
+              );
+            } catch {}
+            setSyncStatus("sincronizado");
+            setUltimaSincronizacao(new Date().toLocaleTimeString());
+            return;
           }
-          isCarregandoServidorRef.current = true;
-          aplicarDados(json.data);
-          localStorage.setItem("financas_victor_leticia_v3", JSON.stringify(json.data));
-          setSyncStatus("sincronizado");
-          setUltimaSincronizacao(new Date().toLocaleTimeString());
-          return;
         }
       }
-      setSyncStatus("offline");
+      setSyncStatus("sincronizado");
     } catch (e) {
       console.warn("Servidor não acessível, mantendo dados locais:", e);
       setSyncStatus("offline");
@@ -289,10 +301,15 @@ export default function DashboardPage() {
 
   // Inicialização com sincronização imediata
   useEffect(() => {
+    let localSavedTimestamp = 0;
     const saved = localStorage.getItem("financas_victor_leticia_v3");
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
+        if (parsed._updatedAt) {
+          localSavedTimestamp = new Date(parsed._updatedAt).getTime();
+          timestampVersaoLocalRef.current = localSavedTimestamp;
+        }
         aplicarDados(parsed);
       } catch (e) {
         console.error("Erro ao ler dados salvos locais v3:", e);
@@ -313,39 +330,53 @@ export default function DashboardPage() {
     }
     setCarregado(true);
 
-    // Busca do servidor para garantir sincronismo com outros dispositivos / navegadores
-    carregarDoServidor(true);
+    // Se o dispositivo não tinha dados locais salvos (ex: celular abrindo pela primeira vez), força a carga imediata da nuvem!
+    const deveForcarCarga = localSavedTimestamp === 0;
+    carregarDoServidor(!deveForcarCarga, deveForcarCarga).finally(() => {
+      primeiraCargaConcluidaRef.current = true;
+    });
 
     // Revalidação automática ao voltar para a aba ou janela
-    const handleFocus = () => carregarDoServidor(true);
-    window.addEventListener("focus", handleFocus);
+    const handleRevalidar = () => {
+      if (!estaSalvandoRef.current && !houveEdicaoLocalRef.current) {
+        carregarDoServidor(true, false);
+      }
+    };
+
+    window.addEventListener("focus", handleRevalidar);
     const handleVisibility = () => {
-      if (document.visibilityState === "visible") carregarDoServidor(true);
+      if (document.visibilityState === "visible") handleRevalidar();
     };
     document.addEventListener("visibilitychange", handleVisibility);
 
-    // Polling periódico leve a cada 20s para atualizar se houver alterações de outro aparelho
+    // Polling periódico leve a cada 15s para sincronizar alterações feitas em outros aparelhos
     const interval = setInterval(() => {
-      if (document.visibilityState === "visible") carregarDoServidor(true);
-    }, 20000);
+      if (document.visibilityState === "visible") handleRevalidar();
+    }, 15000);
 
     return () => {
-      window.removeEventListener("focus", handleFocus);
+      window.removeEventListener("focus", handleRevalidar);
       document.removeEventListener("visibilitychange", handleVisibility);
       clearInterval(interval);
     };
   }, []);
 
-  // Salva automaticamente a cada alteração com persistência central no servidor
+  // Salva automaticamente a cada alteração real do usuário com persistência central no servidor
   useEffect(() => {
-    if (!carregado) return;
+    // Não salva antes da primeira carga ser concluída
+    if (!primeiraCargaConcluidaRef.current || !carregado) return;
+
+    // Se a mudança de estado foi causada por aplicar dados vindos do servidor, NÃO salva de volta
     if (isCarregandoServidorRef.current) {
       isCarregandoServidorRef.current = false;
       return;
     }
 
-    ultimaEdicaoLocalRef.current = Date.now();
-    estaSalvandoRef.current = true;
+    // Marca que houve edição real do usuário
+    houveEdicaoLocalRef.current = true;
+    const agora = Date.now();
+    timestampVersaoLocalRef.current = agora;
+    const nowIso = new Date(agora).toISOString();
 
     const payload = {
       contasCasa,
@@ -358,11 +389,18 @@ export default function DashboardPage() {
       contasExcluidas,
     };
 
-    // Salva imediatamente em LocalStorage
-    localStorage.setItem("financas_victor_leticia_v3", JSON.stringify(payload));
+    // Salva imediatamente em LocalStorage com timestamp
+    try {
+      localStorage.setItem(
+        "financas_victor_leticia_v3",
+        JSON.stringify({ ...payload, _updatedAt: nowIso })
+      );
+    } catch {}
 
-    // Debounce de 400ms para salvar no servidor (/api/finance-data)
+    // Debounce de 400ms para salvar no servidor (/api/finance-data -> Google Sheets)
     setSyncStatus("salvando");
+    estaSalvandoRef.current = true;
+
     const timer = setTimeout(async () => {
       try {
         const res = await fetch("/api/finance-data", {
@@ -371,6 +409,17 @@ export default function DashboardPage() {
           body: JSON.stringify(payload),
         });
         if (res.ok) {
+          const resJson = await res.json();
+          if (resJson.updatedAt) {
+            timestampVersaoLocalRef.current = new Date(resJson.updatedAt).getTime();
+            try {
+              localStorage.setItem(
+                "financas_victor_leticia_v3",
+                JSON.stringify({ ...payload, _updatedAt: resJson.updatedAt })
+              );
+            } catch {}
+          }
+          houveEdicaoLocalRef.current = false;
           setSyncStatus("sincronizado");
           setUltimaSincronizacao(new Date().toLocaleTimeString());
         } else {
@@ -1877,7 +1926,7 @@ export default function DashboardPage() {
 
           <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
             <button
-              onClick={() => carregarDoServidor(false)}
+              onClick={() => carregarDoServidor(false, true)}
               title={
                 syncStatus === "sincronizado"
                   ? `Sincronizado com o servidor central às ${ultimaSincronizacao || "agora"}. Clique para atualizar dados de outros navegadores/dispositivos.`

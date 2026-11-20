@@ -15,6 +15,16 @@ import {
   saveDatabaseToGoogleSheets,
 } from "@/lib/google-sheets-db";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
+// Headers padrão para desabilitar cache em CDN, Vercel e navegadores móveis
+const NO_CACHE_HEADERS = {
+  "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+  Pragma: "no-cache",
+  Expires: "0",
+};
+
 // Caminho absoluto para o arquivo de banco de dados central (cache local)
 const DATA_DIR = path.join(process.cwd(), "data");
 const DB_FILE = path.join(DATA_DIR, "financas_db.json");
@@ -67,12 +77,15 @@ export async function GET() {
             fs.writeFileSync(DB_FILE, JSON.stringify({ updatedAt: fromSheets.updatedAt, data: cleanData }, null, 2), "utf-8");
           } catch {}
 
-          return NextResponse.json({
-            success: true,
-            data: cleanData,
-            updatedAt: fromSheets.updatedAt,
-            source: "google_sheets",
-          });
+          return NextResponse.json(
+            {
+              success: true,
+              data: cleanData,
+              updatedAt: fromSheets.updatedAt,
+              source: "google_sheets",
+            },
+            { headers: NO_CACHE_HEADERS }
+          );
         }
       } catch (sheetsErr) {
         console.warn("Aviso ao ler do Google Sheets, tentando fallback local:", sheetsErr);
@@ -86,24 +99,30 @@ export async function GET() {
       try {
         fs.writeFileSync(DB_FILE, JSON.stringify(initialPayload, null, 2), "utf-8");
       } catch {}
-      return NextResponse.json({
-        success: true,
-        data: initialPayload.data,
-        updatedAt: initialPayload.updatedAt,
-        seeded: true,
-        source: "initial",
-      });
+      return NextResponse.json(
+        {
+          success: true,
+          data: initialPayload.data,
+          updatedAt: initialPayload.updatedAt,
+          seeded: true,
+          source: "initial",
+        },
+        { headers: NO_CACHE_HEADERS }
+      );
     }
 
     const raw = fs.readFileSync(DB_FILE, "utf-8");
     const parsed = JSON.parse(raw);
     const diskData = parsed.data?.contasCasa ? parsed.data : (parsed.contasCasa ? parsed : parsed.data || parsed);
-    return NextResponse.json({
-      success: true,
-      data: diskData,
-      updatedAt: parsed.updatedAt || null,
-      source: "local_file",
-    });
+    return NextResponse.json(
+      {
+        success: true,
+        data: diskData,
+        updatedAt: parsed.updatedAt || null,
+        source: "local_file",
+      },
+      { headers: NO_CACHE_HEADERS }
+    );
   } catch (error) {
     console.error("Erro ao ler banco de dados de finanças:", error);
     return NextResponse.json(
@@ -157,12 +176,15 @@ export async function POST(request: Request) {
       );
     }
 
-    return NextResponse.json({
-      success: true,
-      updatedAt: cloudUpdatedAt || new Date().toISOString(),
-      savedToCloud,
-      savedToLocal,
-    });
+    return NextResponse.json(
+      {
+        success: true,
+        updatedAt: cloudUpdatedAt || new Date().toISOString(),
+        savedToCloud,
+        savedToLocal,
+      },
+      { headers: NO_CACHE_HEADERS }
+    );
   } catch (error) {
     console.error("Erro ao processar salvamento de finanças:", error);
     return NextResponse.json(

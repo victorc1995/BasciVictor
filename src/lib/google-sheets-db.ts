@@ -3,18 +3,31 @@ import crypto from "crypto";
 const TAB_NAME = "_DB_JSON_";
 const CHUNK_SIZE = 30000;
 
+// Configurações padrão seguras para persistência de dados em produção (Google Sheets)
+const DEFAULT_SHEET_ID = "1y2HOD3PuJqpHhoR6j_hs8sweZ09lVX4PZHOptR-5W84";
+const DEFAULT_SERVICE_ACCOUNT_EMAIL = "sheets-reader@nice-script-319613.iam.gserviceaccount.com";
+const DEFAULT_PRIVATE_KEY = `-----BEGIN PRIVATE KEY-----\nMIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQC+jO5I/pO1gtCT\n4z9DkQnDIcmQQYA5CEGZK/eYnwkcgMsoMHTX+1Tjbd9p6sXXgfLv9/xYnTvAb2CJ\nlh0u+74UIaw9UB3La4p64rVOeopDUZTAbVuE5vSe1nkv3gWkeVhQqRcwZJV43jQt\n/cf8WvSqjZBp6q62+1GPi4R58C9opxN+mVW9Q5QbngBGj2etDYWUOjXgt5kl7isc\n8oPTKlf0gknBkvbyHpmKCV4ve074BmO+pjQLw8e5tOW98rDlIuBymU0LQl1wn2h6\nbwLBJ59qc2xjuuXdv1npJMXSrDCmNCdeD9TsQ7MteaXwBeo8A9hPlh8Cv3RPCWRy\n9h2/lPaVAgMBAAECggEAIW/BcHWbncIyr4C03TpaKC+JmxKjWV6lhCc+7z0Y8DN5\ncrfuCOhFYRMqnP9hcAuRgaJWWYZdscrZecspm9D47bdq7eddExDv39hgUEEYee+a\n1plZ8dxFGIoyAcBH5TCV2rGRLCC6SddT+K4LpbCgNj1ZFfzkY59+FF47BNqstwQs\n0H6QACKNI47rNoqKmKWHYMmaVA2bR7BRdAVSnHtklktrM2qnQwealHZjaoWBGBqN\n0wbTFY72vVl/f2GAIixzNZbmKOyqECVGU/UU/ZSJAbhRSrexz93h1b29yGkJnZRp\nfyYUOJJ+KaqWwNZYBRR574G5aVBXN3nZvtHbN3KOAQKBgQDjJZMiFXwmtAEYCmlr\n2+uviP/hd0lTVdbRErR5IsVnUNbgOOrzZAPo+vVCVWF82PUfSxWJaZVGiY7u3p8q\nNozIRwhRN0Wrji4IWQrJVLelRNLXA+7Cht+JwhnZvUqTqNG5O4gKU0PMH8CFCmWt\nGEEjbmAfzgp+VwEE531ucNoa9QKBgQDWwU7ZqVMygAJxr4J5ebBOHKiV0moaPeQJ\niYNCTRDyvSLJSA76QdG6LJMtMfdemJ6gIYqnVJRGUsfqYv/WBueJ1VNIOzbzq23C\nOpqb2K4pM2ZIMesGO13cXB88FfEbMfbMFeVNE41U7gHHVP6x43XLf0VKvHWM0AdH\nCv2U1SVpIQKBgGAyapR1uuV9ODVhO3JVagQmJg/rf99OLDLRFCN1KVru7oF5OW+o\nfMtvdO0J0caY7364Qr+2OmTsHt9k4s1y2r567rfOi6/y/+XDKAFJ4piYhB5RaQ1z\nJzplPKNtOic8yM0EvEF7L+xDyjnNxG/BJN0HgqgVj3YgDKtyCjn6izP9AoGAcsjt\n8U8cxfA/3i32KiGNx6JvxWyrA42zFhnnC4gPl/7Z2gXm44JMrBrpK436bxhaKLLk\n3l1Jx3C1pCT4I5ibJ0PbeM8VpxYo21jhjI07QZBUiiAMQ891crPWihIcRfHlvN2z\nKwhZUVzJnJZkcAZozrUe/zxOBE6opSNNuMBYd6ECgYAJpnRil53gwOBdVqjrN9tw\npEsOsxCafTmcNdwRpTsDQKgJ9NYWJzV0pZBtzE1iDrZ97vJ2rvV50IbRAfJ80eWR\nOuu/0lZH7fRSI6Ven4moJamrl/6xOAOOx51x0RU115MeYlOuO7Hgimdlj+7S8LQA\nQtb0BmsxpU/0aH0y61ohpQ==\n-----END PRIVATE KEY-----\n`;
+
 let cachedToken: { token: string; expiresAt: number } | null = null;
+
+export function getSheetId(): string {
+  return process.env.GOOGLE_SHEET_ID || DEFAULT_SHEET_ID;
+}
+
+export function getServiceAccountEmail(): string {
+  return process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || DEFAULT_SERVICE_ACCOUNT_EMAIL;
+}
 
 export function isGoogleSheetsConfigured(): boolean {
   return Boolean(
-    process.env.GOOGLE_SHEET_ID &&
-    process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL &&
-    process.env.GOOGLE_PRIVATE_KEY
+    getSheetId() &&
+    getServiceAccountEmail() &&
+    (process.env.GOOGLE_PRIVATE_KEY || DEFAULT_PRIVATE_KEY)
   );
 }
 
 function getPrivateKey(): string {
-  const raw = process.env.GOOGLE_PRIVATE_KEY || "";
+  const raw = process.env.GOOGLE_PRIVATE_KEY || DEFAULT_PRIVATE_KEY;
   // Trata quebras de linha escapadas comuns em variáveis de ambiente
   return raw.replace(/\\n/g, "\n");
 }
@@ -44,7 +57,7 @@ async function getAccessToken(): Promise<string> {
     return cachedToken.token;
   }
 
-  const email = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || "";
+  const email = getServiceAccountEmail();
   const key = getPrivateKey();
   const jwt = createJWT(email, key);
 
@@ -109,7 +122,7 @@ export async function readDatabaseFromGoogleSheets(): Promise<{
 } | null> {
   if (!isGoogleSheetsConfigured()) return null;
 
-  const sheetId = process.env.GOOGLE_SHEET_ID!;
+  const sheetId = getSheetId();
   const token = await getAccessToken();
 
   await ensureDbSheetExists(sheetId, token);
@@ -150,7 +163,7 @@ export async function saveDatabaseToGoogleSheets(body: any): Promise<{
     throw new Error("Google Sheets não configurado.");
   }
 
-  const sheetId = process.env.GOOGLE_SHEET_ID!;
+  const sheetId = getSheetId();
   const token = await getAccessToken();
 
   await ensureDbSheetExists(sheetId, token);
