@@ -131,8 +131,10 @@ export async function extrairTextoDePDF(file: File, senhaUsuario?: string): Prom
     const items: ItemTextoPDF[] = content.items
       .map((it: any) => ({
         str: (it.str || "").trim(),
-        x: Math.round(it.transform?.[4] || 0),
-        y: Math.round(it.transform?.[5] || 0),
+        x: it.transform?.[4] || 0,
+        y: it.transform?.[5] || 0,
+        w: it.width || 0,
+        h: it.height || 0,
       }))
       .filter((it: any) => it.str.length > 0);
 
@@ -157,8 +159,8 @@ export async function extrairTextoDePDF(file: File, senhaUsuario?: string): Prom
           lastRight = it.x + (it.w || 0);
           continue;
         }
-        // Se houver espaçamento real (> 2.5px) entre o fim do caractere anterior e o atual, adiciona espaço
-        if (lastRight !== null && it.x - lastRight > 2.5) {
+        // Se houver espaçamento real (>= 1.2px) entre o fim do caractere anterior e o atual, adiciona espaço
+        if (lastRight !== null && (it.x - lastRight >= 1.2)) {
           if (!lineStr.endsWith(" ")) lineStr += " ";
         }
         lineStr += it.str;
@@ -861,8 +863,8 @@ export async function extrairDadosContrachequePDF(
           lastRight = it.x + (it.w || 0);
           continue;
         }
-        // Se houver espaçamento real (> 2.5px) entre o fim do caractere anterior e o atual, adiciona espaço
-        if (lastRight !== null && it.x - lastRight > 2.5) {
+        // Se houver espaçamento real (>= 1.2px) entre o fim do caractere anterior e o atual, adiciona espaço
+        if (lastRight !== null && (it.x - lastRight >= 1.2)) {
           if (!lineStr.endsWith(" ")) lineStr += " ";
         }
         lineStr += it.str;

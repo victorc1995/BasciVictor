@@ -125,28 +125,36 @@ export const INITIAL_CONTAS_CASA: ContaCasa[] = [
 ];
 
 export const INITIAL_POUPANCA: MovimentacaoPoupanca[] = [
-  // Lançamentos Confirmados (Realizado total R$ 58.013,00)
-  { id: "p-conf-8", data: "2026-11-10", descricao: "Diárias Op. Verão (10/11)", tipo: "ENTRADA", valor: 6200.00, categoria: "Diárias Op. Verão", status: "CONFIRMADO" },
-  { id: "p-conf-7", data: "2026-11-05", descricao: "Cartão Letícia", tipo: "SAIDA", valor: 499.00, categoria: "Cartão de Crédito", status: "CONFIRMADO" },
-  { id: "p-conf-6", data: "2026-11-03", descricao: "Diárias Op. Verão (03/11)", tipo: "ENTRADA", valor: 6000.00, categoria: "Diárias Op. Verão", status: "CONFIRMADO" },
-  { id: "p-conf-5", data: "2026-11-03", descricao: "13º Salário 90% Antecipado", tipo: "ENTRADA", valor: 9000.00, categoria: "Salário / 13º", status: "CONFIRMADO" },
-  { id: "p-conf-4", data: "2026-10-20", descricao: "99 Setembro", tipo: "ENTRADA", valor: 318.00, categoria: "Renda Extra", status: "CONFIRMADO" },
-  { id: "p-conf-3", data: "2026-10-15", descricao: "Seguro Ar", tipo: "ENTRADA", valor: 2294.00, categoria: "Metas / Projetos", status: "CONFIRMADO" },
-  { id: "p-conf-2", data: "2026-10-15", descricao: "Sobra Venda HB20 / Caixa Veículo", tipo: "ENTRADA", valor: 29700.00, categoria: "Metas / Projetos", status: "CONFIRMADO" },
+  // Lançamentos Confirmados (Saldo Confirmado R$ 10.328,00)
   { id: "p-conf-1", data: "2026-10-01", descricao: "Reserva de Emergência Intocável", tipo: "ENTRADA", valor: 5000.00, categoria: "Reserva Emergência", status: "CONFIRMADO" },
+  { id: "p-conf-2", data: "2026-10-15", descricao: "Sobra Venda HB20 / Caixa Veículo", tipo: "ENTRADA", valor: 29700.00, categoria: "Metas / Projetos", status: "CONFIRMADO" },
+  { id: "p-conf-3", data: "2026-10-15", descricao: "Seguro Ar", tipo: "ENTRADA", valor: 2294.00, categoria: "Metas / Projetos", status: "CONFIRMADO" },
+  { id: "p-conf-4", data: "2026-10-20", descricao: "99 Setembro", tipo: "ENTRADA", valor: 318.00, categoria: "Renda Extra", status: "CONFIRMADO" },
+  { id: "p-conf-7", data: "2026-11-02", descricao: "Cartão Letícia", tipo: "SAIDA", valor: 499.00, categoria: "Cartão de Crédito", status: "CONFIRMADO" },
+  { id: "p-conf-5", data: "2026-11-03", descricao: "13º Salário 90% Antecipado", tipo: "ENTRADA", valor: 9000.00, categoria: "Salário / 13º", status: "CONFIRMADO" },
+  { id: "p-conf-6", data: "2026-11-03", descricao: "Diárias Op. Verão (03/11)", tipo: "ENTRADA", valor: 6000.00, categoria: "Diárias Op. Verão", status: "CONFIRMADO" },
+  { id: "p-conf-8", data: "2026-11-10", descricao: "Diárias Op. Verão (10/11)", tipo: "ENTRADA", valor: 6200.00, categoria: "Diárias Op. Verão", status: "CONFIRMADO" },
+  { id: "p-conf-ar-sala", data: "2026-11-12", descricao: "Instalação Ar Sala", tipo: "SAIDA", valor: 750.00, categoria: "Metas / Projetos", status: "CONFIRMADO" },
+  { id: "p-conf-ar-quarto", data: "2026-11-12", descricao: "Instalação Ar Quarto", tipo: "SAIDA", valor: 750.00, categoria: "Metas / Projetos", status: "CONFIRMADO" },
+  { id: "p-conf-creta", data: "2026-11-13", descricao: "Entrada Creta", tipo: "SAIDA", valor: 45000.00, categoria: "Metas / Projetos", status: "CONFIRMADO" },
+  { id: "p-conf-uber-diana", data: "2026-11-13", descricao: "Uber Diana", tipo: "SAIDA", valor: 200.00, categoria: "Outros", status: "CONFIRMADO" },
+  { id: "p-conf-jantar", data: "2026-11-18", descricao: "Jantar Casamento", tipo: "SAIDA", valor: 985.00, categoria: "Outros", status: "CONFIRMADO" },
 
   // Previsões Futuras (A Realizar)
-  { id: "p-prev-11", data: "2027-04-30", descricao: "Compensação Acordo Banrisul (Difa Abr)", tipo: "SAIDA", valor: 1562.01, categoria: "Compensação Banrisul (Difa)", status: "PREVISTO" },
-  { id: "p-prev-10", data: "2027-04-01", descricao: "Previsão Diárias Op. Verão (Abr)", tipo: "ENTRADA", valor: 3030.00, categoria: "Diárias Op. Verão", status: "PREVISTO" },
-  { id: "p-prev-9", data: "2027-03-30", descricao: "Compensação Acordo Banrisul (Difa Mar)", tipo: "SAIDA", valor: 1562.01, categoria: "Compensação Banrisul (Difa)", status: "PREVISTO" },
-  { id: "p-prev-8", data: "2027-03-01", descricao: "Previsão Diárias Op. Verão (Mar)", tipo: "ENTRADA", valor: 6060.00, categoria: "Diárias Op. Verão", status: "PREVISTO" },
-  { id: "p-prev-7", data: "2027-02-28", descricao: "Compensação Acordo Banrisul (Difa Fev)", tipo: "SAIDA", valor: 1562.01, categoria: "Compensação Banrisul (Difa)", status: "PREVISTO" },
-  { id: "p-prev-6", data: "2027-02-01", descricao: "Previsão Diárias Op. Verão (Fev)", tipo: "ENTRADA", valor: 5656.00, categoria: "Diárias Op. Verão", status: "PREVISTO" },
-  { id: "p-prev-5", data: "2027-01-30", descricao: "Compensação Acordo Banrisul (Difa Jan)", tipo: "SAIDA", valor: 1562.01, categoria: "Compensação Banrisul (Difa)", status: "PREVISTO" },
-  { id: "p-prev-4", data: "2027-01-01", descricao: "Previsão Diárias Op. Verão (Jan)", tipo: "ENTRADA", valor: 6262.00, categoria: "Diárias Op. Verão", status: "PREVISTO" },
-  { id: "p-prev-3", data: "2026-12-30", descricao: "Compensação Acordo Banrisul (Difa Dez)", tipo: "SAIDA", valor: 1562.01, categoria: "Compensação Banrisul (Difa)", status: "PREVISTO" },
-  { id: "p-prev-2", data: "2026-12-01", descricao: "Previsão Diárias Op. Verão (Dez)", tipo: "ENTRADA", valor: 6262.00, categoria: "Diárias Op. Verão", status: "PREVISTO" },
   { id: "p-prev-1", data: "2026-11-30", descricao: "Compensação Acordo Banrisul (Difa Nov)", tipo: "SAIDA", valor: 1562.01, categoria: "Compensação Banrisul (Difa)", status: "PREVISTO" },
+  { id: "p-prev-2", data: "2026-12-01", descricao: "Previsão Diárias Op. Verão (Dez)", tipo: "ENTRADA", valor: 6262.00, categoria: "Diárias Op. Verão", status: "PREVISTO" },
+  { id: "p-prev-creta-parc", data: "2026-12-17", descricao: "Parcela Creta", tipo: "SAIDA", valor: 1730.00, categoria: "Metas / Projetos", status: "PREVISTO" },
+  { id: "p-prev-creta-ipva", data: "2026-12-20", descricao: "IPVA Creta", tipo: "SAIDA", valor: 2500.00, categoria: "Metas / Projetos", status: "PREVISTO" },
+  { id: "p-prev-3", data: "2026-12-30", descricao: "Compensação Acordo Banrisul (Difa Dez)", tipo: "SAIDA", valor: 1562.01, categoria: "Compensação Banrisul (Difa)", status: "PREVISTO" },
+  { id: "p-prev-pai", data: "2026-12-30", descricao: "Acordo / Devolução Pai", tipo: "SAIDA", valor: 6309.00, categoria: "Outros", status: "PREVISTO" },
+  { id: "p-prev-4", data: "2027-01-01", descricao: "Previsão Diárias Op. Verão (Jan)", tipo: "ENTRADA", valor: 6262.00, categoria: "Diárias Op. Verão", status: "PREVISTO" },
+  { id: "p-prev-5", data: "2027-01-30", descricao: "Compensação Acordo Banrisul (Difa Jan)", tipo: "SAIDA", valor: 1562.01, categoria: "Compensação Banrisul (Difa)", status: "PREVISTO" },
+  { id: "p-prev-6", data: "2027-02-01", descricao: "Previsão Diárias Op. Verão (Fev)", tipo: "ENTRADA", valor: 5656.00, categoria: "Diárias Op. Verão", status: "PREVISTO" },
+  { id: "p-prev-7", data: "2027-02-28", descricao: "Compensação Acordo Banrisul (Difa Fev)", tipo: "SAIDA", valor: 1562.01, categoria: "Compensação Banrisul (Difa)", status: "PREVISTO" },
+  { id: "p-prev-8", data: "2027-03-01", descricao: "Previsão Diárias Op. Verão (Mar)", tipo: "ENTRADA", valor: 6060.00, categoria: "Diárias Op. Verão", status: "PREVISTO" },
+  { id: "p-prev-9", data: "2027-03-30", descricao: "Compensação Acordo Banrisul (Difa Mar)", tipo: "SAIDA", valor: 1562.01, categoria: "Compensação Banrisul (Difa)", status: "PREVISTO" },
+  { id: "p-prev-10", data: "2027-04-01", descricao: "Previsão Diárias Op. Verão (Abr)", tipo: "ENTRADA", valor: 3030.00, categoria: "Diárias Op. Verão", status: "PREVISTO" },
+  { id: "p-prev-11", data: "2027-04-30", descricao: "Compensação Acordo Banrisul (Difa Abr)", tipo: "SAIDA", valor: 1562.01, categoria: "Compensação Banrisul (Difa)", status: "PREVISTO" },
 ];
 
 export const INITIAL_COMPRAS_CARTAO: CompraCartao[] = [
@@ -238,4 +246,37 @@ export const INITIAL_COMPRAS_CARTAO: CompraCartao[] = [
   { id: "sic-47", mesFatura: "2026-11", banco: "Sicredi", titularCartao: "Cartão Físico Letícia", dataCompra: "17/10/2026", descricao: "Rd Saude Online", parcelaInfo: "1/3", valor: 44.29, quemPaga: "LE" },
   { id: "sic-48", mesFatura: "2026-11", banco: "Sicredi", titularCartao: "Cartão Físico Victor", dataCompra: "18/10/2026", descricao: "Log Participacoes E In", parcelaInfo: undefined, valor: 131.86, quemPaga: "DIV" },
   { id: "sic-49", mesFatura: "2026-11", banco: "Sicredi", titularCartao: "Cartão Físico Victor", dataCompra: "18/10/2026", descricao: "Distribuidorade", parcelaInfo: undefined, valor: 91.19, quemPaga: "DIV" },
+
+  // =========================================================================
+  // DEZEMBRO/2026 - PARCELAS E COMPRAS DEZEMBRO SICREDI & C6
+  // =========================================================================
+  { id: "sic-dez-1", mesFatura: "2026-12", banco: "Sicredi", titularCartao: "Cartão Virtual Letícia", dataCompra: "27/07/2026", descricao: "Mercadolivre Mercad", parcelaInfo: "4/4", valor: 233.26, quemPaga: "DIV" },
+  { id: "sic-dez-2", mesFatura: "2026-12", banco: "Sicredi", titularCartao: "Cartão Físico Letícia", dataCompra: "05/08/2026", descricao: "House Parts Com De", parcelaInfo: "4/6", valor: 162.98, quemPaga: "DIV" },
+  { id: "sic-dez-3", mesFatura: "2026-12", banco: "Sicredi", titularCartao: "Cartão Virtual Letícia", dataCompra: "09/09/2026", descricao: "Mais Saude", parcelaInfo: "3/12", valor: 36.90, quemPaga: "DIV" },
+  { id: "sic-dez-4", mesFatura: "2026-12", banco: "Sicredi", titularCartao: "Cartão Virtual Letícia", dataCompra: "27/09/2026", descricao: "Jaqueline Peter Cas", parcelaInfo: "2/2", valor: 74.95, quemPaga: "LE" },
+  { id: "sic-dez-5", mesFatura: "2026-12", banco: "Sicredi", titularCartao: "Cartão Físico Letícia", dataCompra: "07/10/2026", descricao: "Agropecuaria E Ferr", parcelaInfo: "2/2", valor: 79.89, quemPaga: "DIV" },
+  { id: "sic-dez-6", mesFatura: "2026-12", banco: "Sicredi", titularCartao: "Cartão Físico Letícia", dataCompra: "08/10/2026", descricao: "App Edprea", parcelaInfo: "2/3", valor: 29.98, quemPaga: "LE" },
+  { id: "sic-dez-7", mesFatura: "2026-12", banco: "Sicredi", titularCartao: "Cartão Físico Letícia", dataCompra: "17/10/2026", descricao: "Rd Saude Online", parcelaInfo: "2/3", valor: 44.29, quemPaga: "LE" },
+
+  { id: "c6-dez-1", mesFatura: "2026-12", banco: "C6 Bank", titularCartao: "Letícia Roque", dataCompra: "27/02/2026", descricao: "OTICAS CAROL", parcelaInfo: "9/10", valor: 156.10, quemPaga: "LE" },
+  { id: "c6-dez-2", mesFatura: "2026-12", banco: "C6 Bank", titularCartao: "Letícia Roque", dataCompra: "18/08/2026", descricao: "HAVAN TRAMANDAI", parcelaInfo: "4/4", valor: 52.23, quemPaga: "DIV" },
+  { id: "c6-dez-3", mesFatura: "2026-12", banco: "C6 Bank", titularCartao: "Letícia Roque", dataCompra: "09/09/2026", descricao: "63261442PAULO", parcelaInfo: "3/4", valor: 344.50, quemPaga: "DIV" },
+  { id: "c6-dez-4", mesFatura: "2026-12", banco: "C6 Bank", titularCartao: "Letícia Roque", dataCompra: "12/09/2026", descricao: "2ASICS - LOJA NOVO HAM", parcelaInfo: "3/5", valor: 102.77, quemPaga: "LE" },
+  { id: "c6-dez-5", mesFatura: "2026-12", banco: "C6 Bank", titularCartao: "Victor Roque", dataCompra: "06/12/2025", descricao: "GLOBO PREMIERE", parcelaInfo: "12/12", valor: 29.90, quemPaga: "DIV" },
+  { id: "c6-dez-6", mesFatura: "2026-12", banco: "C6 Bank", titularCartao: "Victor Roque", dataCompra: "06/12/2025", descricao: "GLOBO GLOBOPLAY", parcelaInfo: "12/12", valor: 29.90, quemPaga: "DIV" },
+  { id: "c6-dez-7", mesFatura: "2026-12", banco: "C6 Bank", titularCartao: "Victor Roque", dataCompra: "27/02/2026", descricao: "OTICAS CAROL", parcelaInfo: "9/10", valor: 72.90, quemPaga: "VIC" },
+  { id: "c6-dez-8", mesFatura: "2026-12", banco: "C6 Bank", titularCartao: "Victor Roque", dataCompra: "08/04/2026", descricao: "RS ADVENTURE LTDA", parcelaInfo: "8/10", valor: 119.80, quemPaga: "VIC" },
+  { id: "c6-dez-9", mesFatura: "2026-12", banco: "C6 Bank", titularCartao: "Victor Roque", dataCompra: "10/06/2026", descricao: "HEMO CORD", parcelaInfo: "6/10", valor: 207.00, quemPaga: "DIV" },
+  { id: "c6-dez-10", mesFatura: "2026-12", banco: "C6 Bank", titularCartao: "Victor Roque", dataCompra: "10/06/2026", descricao: "HEMO CORD", parcelaInfo: "6/10", valor: 63.00, quemPaga: "DIV" },
+  { id: "c6-dez-11", mesFatura: "2026-12", banco: "C6 Bank", titularCartao: "Victor Roque", dataCompra: "05/07/2026", descricao: "63173484WILLIAM", parcelaInfo: "5/5", valor: 278.20, quemPaga: "DIV" },
+  { id: "c6-dez-12", mesFatura: "2026-12", banco: "C6 Bank", titularCartao: "Victor Roque", dataCompra: "07/08/2026", descricao: "AJJ GONSALVES DEWES LT", parcelaInfo: "4/12", valor: 374.08, quemPaga: "DIV" },
+  { id: "c6-dez-13", mesFatura: "2026-12", banco: "C6 Bank", titularCartao: "Victor Roque", dataCompra: "11/08/2026", descricao: "IMAGGI REDEMAC", parcelaInfo: "4/5", valor: 79.76, quemPaga: "DIV" },
+  { id: "c6-dez-14", mesFatura: "2026-12", banco: "C6 Bank", titularCartao: "Victor Roque", dataCompra: "12/09/2026", descricao: "ME.LINDA-N.HAMB.RINCAO", parcelaInfo: "3/4", valor: 53.14, quemPaga: "DIV" },
+  { id: "c6-dez-15", mesFatura: "2026-12", banco: "C6 Bank", titularCartao: "Victor Roque", dataCompra: "12/09/2026", descricao: "ADIDAS NOVO HAMBURGO", parcelaInfo: "3/5", valor: 84.02, quemPaga: "VIC" },
+  { id: "c6-dez-16", mesFatura: "2026-12", banco: "C6 Bank", titularCartao: "Victor Roque", dataCompra: "13/09/2026", descricao: "MERCADO*MERCADOLIVRE", parcelaInfo: "3/10", valor: 105.01, quemPaga: "DIV" },
+  { id: "c6-dez-17", mesFatura: "2026-12", banco: "C6 Bank", titularCartao: "Victor Roque", dataCompra: "04/10/2026", descricao: "EBN *PLAYSTATION", parcelaInfo: "2/4", valor: 87.25, quemPaga: "VIC" },
+  { id: "c6-dez-18", mesFatura: "2026-12", banco: "C6 Bank", titularCartao: "Victor Roque", dataCompra: "05/10/2026", descricao: "APPLE.COM/BILL", parcelaInfo: undefined, valor: 64.90, quemPaga: "DIV" },
+  { id: "c6-dez-19", mesFatura: "2026-12", banco: "C6 Bank", titularCartao: "Victor Roque", dataCompra: "11/10/2026", descricao: "UBER *ONE MEMBERSHIP U", parcelaInfo: undefined, valor: 12.90, quemPaga: "DIV" },
+  { id: "c6-dez-20", mesFatura: "2026-12", banco: "C6 Bank", titularCartao: "Victor Roque", dataCompra: "22/10/2026", descricao: "GOOGLE YOUTUBEPREMIUM", parcelaInfo: undefined, valor: 16.90, quemPaga: "VIC" },
+  { id: "c6-dez-21", mesFatura: "2026-12", banco: "C6 Bank", titularCartao: "Victor Roque", dataCompra: "27/10/2026", descricao: "AMAZON PRIME CANAIS", parcelaInfo: undefined, valor: 34.90, quemPaga: "DIV" },
 ];

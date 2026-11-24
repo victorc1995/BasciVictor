@@ -38,7 +38,7 @@ function createJWT(email: string, key: string): string {
   const claimSet = Buffer.from(
     JSON.stringify({
       iss: email,
-      scope: "https://www.googleapis.com/auth/spreadsheets",
+      scope: "https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive",
       aud: "https://oauth2.googleapis.com/token",
       exp: now + 3600,
       iat: now,
@@ -51,7 +51,7 @@ function createJWT(email: string, key: string): string {
   return `${header}.${claimSet}.${signature}`;
 }
 
-async function getAccessToken(): Promise<string> {
+export async function getAccessToken(): Promise<string> {
   const now = Date.now();
   if (cachedToken && cachedToken.expiresAt > now + 60000) {
     return cachedToken.token;
