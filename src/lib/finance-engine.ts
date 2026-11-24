@@ -42,6 +42,7 @@ export interface CompraCartao {
   valor: number;
   quemPaga: Pagador;
   isNova?: boolean;
+  isProjetada?: boolean;
   pagadorDefinido?: boolean;
 }
 
@@ -302,6 +303,66 @@ function parseParcela(info?: string): { atual: number; total: number } | null {
 }
 
 /**
+ * Calcula a diferença em meses entre duas datas no formato YYYY-MM
+ * Ex: diferencaMeses("2026-11", "2026-12") === 1
+ */
+export function diferencaMeses(mesOrigem: string, mesDestino: string): number {
+  const [y1, m1] = mesOrigem.split("-").map(Number);
+  const [y2, m2] = mesDestino.split("-").map(Number);
+  return (y2 - y1) * 12 + (m2 - m1);
+}
+
+/**
+ * Retorna todas as compras que incidem em um determinado mês alvo:
+ * 1. Lançamentos com mesFatura === mesAlvo (fatura oficial ou compras manuais)
+ * 2. Parcelas ativas de meses anteriores que ainda possuem parcelas a vencer em mesAlvo
+ */
+export function obterComprasDoMesComProjecao(
+  mesAlvo: string,
+  compras: CompraCartao[]
+): CompraCartao[] {
+  const comprasDiretas = compras.filter((c) => c.mesFatura === mesAlvo);
+  const resultado: CompraCartao[] = [...comprasDiretas];
+
+  // Adiciona parcelas projetadas de meses anteriores que ainda estão ativas em mesAlvo
+  for (const c of compras) {
+    if (c.mesFatura >= mesAlvo || !c.parcelaInfo) continue;
+    const pInfo = parseParcela(c.parcelaInfo);
+    if (!pInfo) continue;
+
+    const diff = diferencaMeses(c.mesFatura, mesAlvo);
+    const parcelaFutura = pInfo.atual + diff;
+
+    if (parcelaFutura <= pInfo.total) {
+      // Verifica se já existe um lançamento correspondente já cadastrado diretamente no mês alvo
+      const jaExiste = comprasDiretas.some(
+        (cd) =>
+          cd.banco === c.banco &&
+          cd.descricao.toLowerCase().trim() === c.descricao.toLowerCase().trim()
+      );
+
+      if (!jaExiste) {
+        resultado.push({
+          id: `proj-${c.id}-${mesAlvo}`,
+          mesFatura: mesAlvo,
+          banco: c.banco,
+          titularCartao: c.titularCartao,
+          dataCompra: c.dataCompra || `05/${mesAlvo.slice(5)}/${mesAlvo.slice(0, 4)}`,
+          descricao: c.descricao,
+          parcelaInfo: `${parcelaFutura}/${pInfo.total}`,
+          valor: c.valor,
+          quemPaga: c.quemPaga,
+          isProjetada: true,
+          isNova: false,
+        });
+      }
+    }
+  }
+
+  return resultado;
+}
+
+/**
  * Retorna a lista padrão de contas fixas para um determinado mês,
  * respeitando os novos valores vigentes a partir de Dezembro/2026
  * e a entrada da parcela do Carro (R$ 1.750,00) a partir de 12/01/2027
@@ -385,7 +446,6 @@ export function calcularProjecao6Meses(
   const estaExcluidaNoMes = (mes: string, id: string, desc?: string): boolean => {
     if (setExcluidos.has(`${mes}:${id}`)) return true;
     if (desc && setExcluidos.has(`${mes}:${desc.toLowerCase().trim()}`)) return true;
-    // Compatibilidade legado: se foi excluída com ID puro, aplica apenas ao mês base inicial para não vazar aos meses seguintes
     if (mes === mesBase && setExcluidos.has(id)) return true;
     return false;
   };
@@ -404,8 +464,6 @@ export function calcularProjecao6Meses(
     );
 
     // Mescla o padrão com contas específicas:
-    // Se a conta padrão já tiver sido customizada/paga em contasEspecificas, usa a versão do usuário;
-    // caso contrário, mantém a conta padrão.
     let contasDoMes: ContaCasa[] = [];
     for (const p of padraoMes) {
       const match = contasEspecificas.find(
@@ -433,33 +491,36 @@ export function calcularProjecao6Meses(
       }
     }
 
-    // Projeta boletos parcelados (ex: Acordo Nubank) para os meses futuros
-    if (offset > 0) {
-      const contasBaseParceladas = contas.filter((c) => c.mesAno === mesBase && c.parcelada);
-      for (const cb of contasBaseParceladas) {
-        const atual = cb.parcelaAtual || 1;
-        const total = cb.totalParcelas || 1;
-        const parcelaFutura = atual + offset;
-        if (parcelaFutura <= total) {
-          const descBase = cb.descricao.replace(/\s*\(\d+\/\d+\)/, "").trim();
-          const jaExiste = contasDoMes.some((c) => c.descricao.toLowerCase().includes(descBase.toLowerCase()));
-          const projId = `proj-parc-${cb.id}-${mesAlvo}`;
-          if (!jaExiste && !estaExcluidaNoMes(mesAlvo, projId, descBase) && !estaExcluidaNoMes(mesAlvo, cb.id, descBase)) {
-            contasDoMes.push({
-              id: projId,
-              mesAno: mesAlvo,
-              descricao: `${descBase} (${parcelaFutura}/${total})`,
-              categoria: cb.categoria,
-              valor: cb.valor,
-              vencimento: `${mesAlvo}-${cb.vencimento.slice(8) || "02"}`,
-              quemPaga: cb.quemPaga,
-              pago: false,
-              status: "PREVISTO",
-              parcelada: true,
-              parcelaAtual: parcelaFutura,
-              totalParcelas: total,
-            });
-          }
+    // Projeta boletos parcelados (ex: Acordo Nubank) de qualquer mês anterior para mesAlvo
+    const contasParceladas = contas.filter((c) => c.parcelada && c.mesAno && c.mesAno <= mesAlvo);
+    for (const cb of contasParceladas) {
+      const diff = diferencaMeses(cb.mesAno, mesAlvo);
+      if (diff <= 0) continue; // já é o próprio mês ou posterior
+      const atual = cb.parcelaAtual || 1;
+      const total = cb.totalParcelas || 1;
+      const parcelaFutura = atual + diff;
+      if (parcelaFutura <= total) {
+        const descBase = cb.descricao.replace(/\s*\(\d+\/\d+\)/, "").trim();
+        const jaExiste = contasDoMes.some(
+          (c) => c.descricao.toLowerCase().includes(descBase.toLowerCase())
+        );
+        const projId = `proj-parc-${cb.id}-${mesAlvo}`;
+        if (!jaExiste && !estaExcluidaNoMes(mesAlvo, projId, descBase) && !estaExcluidaNoMes(mesAlvo, cb.id, descBase)) {
+          contasDoMes.push({
+            id: projId,
+            mesAno: mesAlvo,
+            descricao: `${descBase} (${parcelaFutura}/${total})`,
+            categoria: cb.categoria,
+            valor: cb.valor,
+            vencimento: `${mesAlvo}-${cb.vencimento ? cb.vencimento.slice(8) : "02"}`,
+            quemPaga: cb.quemPaga,
+            pago: false,
+            status: "PREVISTO",
+            parcelada: true,
+            parcelaAtual: parcelaFutura,
+            totalParcelas: total,
+            recorrente: true,
+          });
         }
       }
     }
@@ -471,63 +532,34 @@ export function calcularProjecao6Meses(
       .filter((c) => c.categoria !== "Fatura Cartão")
       .reduce((acc, c) => acc + c.valor, 0);
 
-    // Projeção das parcelas de cartões
+    // Obtém todas as compras e parcelas ativas (diretas + projetadas) para este mês alvo
+    const comprasDoMesAlvo = obterComprasDoMesComProjecao(mesAlvo, compras);
     const parcelasProjetadas: ProjecaoMesContas["parcelasProjetadas"] = [];
     let totalFaturaC6 = 0;
     let totalFaturaSicredi = 0;
 
-    for (const c of compras) {
-      // Se a compra já pertence diretamente ao mês alvo
-      if (c.mesFatura === mesAlvo) {
-        if (c.banco === "C6 Bank") totalFaturaC6 += c.valor;
-        if (c.banco === "Sicredi") totalFaturaSicredi += c.valor;
-        const pInfo = parseParcela(c.parcelaInfo);
-        const valorVictor = c.quemPaga === "VIC" ? c.valor : c.quemPaga === "DIV" ? c.valor / 2 : 0;
-        const valorLeticia = c.quemPaga === "LE" ? c.valor : c.quemPaga === "DIV" ? c.valor / 2 : 0;
-        const valorPoupanca = c.quemPaga === "POUP" ? c.valor : 0;
-        parcelasProjetadas.push({
-          id: c.id,
-          descricao: c.descricao,
-          banco: c.banco,
-          titularCartao: c.titularCartao,
-          parcelaAtual: pInfo ? pInfo.atual : 1,
-          totalParcelas: pInfo ? pInfo.total : 1,
-          valor: c.valor,
-          quemPaga: c.quemPaga,
-          valorVictor,
-          valorLeticia,
-          valorPoupanca,
-        });
-        continue;
-      }
+    for (const c of comprasDoMesAlvo) {
+      if (c.banco === "C6 Bank") totalFaturaC6 += c.valor;
+      if (c.banco === "Sicredi") totalFaturaSicredi += c.valor;
 
-      // Se a compra foi lançada no mês base e possui parcelas futuras
-      if (c.mesFatura === mesBase && c.parcelaInfo && offset > 0) {
-        const pInfo = parseParcela(c.parcelaInfo);
-        if (pInfo) {
-          const parcelaFutura = pInfo.atual + offset;
-          if (parcelaFutura <= pInfo.total) {
-            if (c.banco === "C6 Bank") totalFaturaC6 += c.valor;
-            if (c.banco === "Sicredi") totalFaturaSicredi += c.valor;
-            const valorVictor = c.quemPaga === "VIC" ? c.valor : c.quemPaga === "DIV" ? c.valor / 2 : 0;
-            const valorLeticia = c.quemPaga === "LE" ? c.valor : c.quemPaga === "DIV" ? c.valor / 2 : 0;
-            const valorPoupanca = c.quemPaga === "POUP" ? c.valor : 0;
-            parcelasProjetadas.push({
-              id: `${c.id}-off${offset}`,
-              descricao: c.descricao,
-              banco: c.banco,
-              titularCartao: c.titularCartao,
-              parcelaAtual: parcelaFutura,
-              totalParcelas: pInfo.total,
-              valor: c.valor,
-              quemPaga: c.quemPaga,
-              valorVictor,
-              valorLeticia,
-              valorPoupanca,
-            });
-          }
-        }
-      }
+      const pInfo = parseParcela(c.parcelaInfo);
+      const valorVictor = c.quemPaga === "VIC" ? c.valor : c.quemPaga === "DIV" ? c.valor / 2 : 0;
+      const valorLeticia = c.quemPaga === "LE" ? c.valor : c.quemPaga === "DIV" ? c.valor / 2 : 0;
+      const valorPoupanca = c.quemPaga === "POUP" ? c.valor : 0;
+
+      parcelasProjetadas.push({
+        id: c.id,
+        descricao: c.descricao,
+        banco: c.banco,
+        titularCartao: c.titularCartao,
+        parcelaAtual: pInfo ? pInfo.atual : 1,
+        totalParcelas: pInfo ? pInfo.total : 1,
+        valor: c.valor,
+        quemPaga: c.quemPaga,
+        valorVictor,
+        valorLeticia,
+        valorPoupanca,
+      });
     }
 
     // Se o usuário adicionou explicitamente uma conta de Fatura Cartão no mês
@@ -589,7 +621,8 @@ export function calcularProjecao6Meses(
 
 /**
  * Projeta as parcelas futuras de um cartão específico (C6 Bank ou Sicredi)
- * separando os valores de Victor e Letícia para cada um dos próximos meses
+ * separando os valores de Victor e Letícia para cada um dos próximos meses.
+ * Mantém a projeção ativa em meses futuros sem zerar parcelas!
  */
 export function calcularProjecaoParcelasCartao(
   banco: CartaoBanco,
@@ -608,58 +641,37 @@ export function calcularProjecaoParcelasCartao(
     let totalDividido = 0;
     let totalPoupanca = 0;
 
-    for (const c of compras) {
-      if (c.banco !== banco) continue;
+    // Obtém todas as compras e parcelas deste banco que incidem em mesAlvo
+    const itensMes = obterComprasDoMesComProjecao(mesAlvo, compras).filter(
+      (c) => c.banco === banco && c.parcelaInfo
+    );
 
-      let parcelaAtual = 1;
-      let totalParcelas = 1;
-      let incluiNoMes = false;
+    for (const c of itensMes) {
+      const pInfo = parseParcela(c.parcelaInfo);
+      const parcelaAtual = pInfo ? pInfo.atual : 1;
+      const totalParcelas = pInfo ? pInfo.total : 1;
 
-      // 1. Se a compra já pertence diretamente ao mês alvo
-      if (c.mesFatura === mesAlvo) {
-        incluiNoMes = true;
-        const pInfo = parseParcela(c.parcelaInfo);
-        if (pInfo) {
-          parcelaAtual = pInfo.atual;
-          totalParcelas = pInfo.total;
-        }
-      }
-      // 2. Se a compra foi lançada no mês base e possui parcelas futuras
-      else if (c.mesFatura === mesBase && c.parcelaInfo && offset > 0) {
-        const pInfo = parseParcela(c.parcelaInfo);
-        if (pInfo) {
-          const prox = pInfo.atual + offset;
-          if (prox <= pInfo.total) {
-            incluiNoMes = true;
-            parcelaAtual = prox;
-            totalParcelas = pInfo.total;
-          }
-        }
-      }
+      const valorVictor = c.quemPaga === "VIC" ? c.valor : c.quemPaga === "DIV" ? c.valor / 2 : 0;
+      const valorLeticia = c.quemPaga === "LE" ? c.valor : c.quemPaga === "DIV" ? c.valor / 2 : 0;
+      const valorPoupanca = c.quemPaga === "POUP" ? c.valor : 0;
 
-      if (incluiNoMes) {
-        const valorVictor = c.quemPaga === "VIC" ? c.valor : c.quemPaga === "DIV" ? c.valor / 2 : 0;
-        const valorLeticia = c.quemPaga === "LE" ? c.valor : c.quemPaga === "DIV" ? c.valor / 2 : 0;
-        const valorPoupanca = c.quemPaga === "POUP" ? c.valor : 0;
+      if (c.quemPaga === "VIC") totalExclusivoVictor += c.valor;
+      else if (c.quemPaga === "LE") totalExclusivoLeticia += c.valor;
+      else if (c.quemPaga === "POUP") totalPoupanca += c.valor;
+      else totalDividido += c.valor;
 
-        if (c.quemPaga === "VIC") totalExclusivoVictor += c.valor;
-        else if (c.quemPaga === "LE") totalExclusivoLeticia += c.valor;
-        else if (c.quemPaga === "POUP") totalPoupanca += c.valor;
-        else totalDividido += c.valor;
-
-        parcelasMes.push({
-          id: `${c.id}-off${offset}`,
-          descricao: c.descricao,
-          titularCartao: c.titularCartao,
-          parcelaAtual,
-          totalParcelas,
-          valor: c.valor,
-          quemPaga: c.quemPaga,
-          valorVictor,
-          valorLeticia,
-          valorPoupanca,
-        });
-      }
+      parcelasMes.push({
+        id: c.id,
+        descricao: c.descricao,
+        titularCartao: c.titularCartao,
+        parcelaAtual,
+        totalParcelas,
+        valor: c.valor,
+        quemPaga: c.quemPaga,
+        valorVictor,
+        valorLeticia,
+        valorPoupanca,
+      });
     }
 
     const metadeDiv = totalDividido / 2;

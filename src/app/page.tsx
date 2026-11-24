@@ -48,8 +48,10 @@ import {
   calcularContrachequeRS,
   calcularProjecao6Meses,
   calcularProjecaoParcelasCartao,
+  diferencaMeses,
   formatarMesAnoLabel,
   formatarMoeda,
+  obterComprasDoMesComProjecao,
   obterStatusVencimento,
   ordenarContasPorUrgencia,
   somarMeses,
@@ -81,14 +83,37 @@ type AbaAtiva = "inicio" | "poupanca" | "salarios" | "cartoes" | "contas" | "ana
 export default function DashboardPage() {
   const [aba, setAba] = useState<AbaAtiva>("inicio");
   const mesAtualReal = useMemo(() => obterMesAtualReal(), []);
-  const [mesSelecionado, setMesSelecionado] = useState<string>(() => obterMesAtualReal());
+  // Inicia por padrão no mês de Dezembro de 2026 (mês ativo de planejamento e projeção)
+  const [mesSelecionado, setMesSelecionado] = useState<string>("2026-12");
   const [carregado, setCarregado] = useState(false);
+  const [feedbackMesConfirmado, setFeedbackMesConfirmado] = useState<string | null>(null);
 
   const handleSelecionarMes = (novoMes: string) => {
     if (!novoMes) return;
     setMesSelecionado(novoMes);
     setMesVisualizadoContas(novoMes);
-    setMesVisualizadoProjecaoCartao(novoMes);
+    setMesVisualizadoProjecaoCartao(somarMeses(novoMes, 1));
+  };
+
+  // Botão de Confirmação do Mês: Confirma o fechamento do mês atual e avança projetando o próximo mês
+  const handleConfirmarMesEAvancar = () => {
+    const mesFechando = mesSelecionado;
+    const proximoMes = somarMeses(mesFechando, 1);
+
+    // Marca as contas do mês atual como pagas/confirmadas se ainda houver pendências
+    setContasCasa((prev) =>
+      prev.map((c) =>
+        c.mesAno === mesFechando ? { ...c, pago: true, status: "CONFIRMADO" } : c
+      )
+    );
+
+    // Avança para o próximo mês
+    handleSelecionarMes(proximoMes);
+
+    setFeedbackMesConfirmado(
+      `✓ Mês de ${formatarMesAnoLabel(mesFechando)} confirmado com sucesso! Agora projetando e exibindo ${formatarMesAnoLabel(proximoMes)}.`
+    );
+    setTimeout(() => setFeedbackMesConfirmado(null), 6000);
   };
 
   // Estados principais (persistidos em LocalStorage + Backup JSON)
@@ -1093,9 +1118,14 @@ export default function DashboardPage() {
     };
   }, [projecao6MesesCalculada, visaoProjecao6M]);
 
-  // Cálculos de Cartões no Mês Selecionado (Geral Casal)
+  // Compras ativas que incidem no mês selecionado (compras diretas ou parcelas projetadas de meses anteriores)
+  const comprasDoMesSelecionado = useMemo(() => {
+    return obterComprasDoMesComProjecao(mesSelecionado, comprasCartao);
+  }, [mesSelecionado, comprasCartao]);
+
+  // Cálculos de Cartões no Mês Selecionado (Geral Casal com parcelas projetadas ativas)
   const resumoCartoesMes = useMemo(() => {
-    const doMes = comprasCartao.filter((c) => c.mesFatura === mesSelecionado);
+    const doMes = comprasDoMesSelecionado;
     let vicDireto = 0;
     let leDireto = 0;
     let divTotal = 0;
@@ -1149,12 +1179,12 @@ export default function DashboardPage() {
       totalLeticiaCartoes: leDireto + metadeDiv,
       totalGeralCartoes: vicDireto + leDireto + divTotal + poupTotal,
     };
-  }, [comprasCartao, mesSelecionado]);
+  }, [comprasDoMesSelecionado]);
 
   // Cálculos do Cartão Selecionado na Aba 4 (C6 Bank ou Sicredi exclusivamente)
   const resumoCartaoSelecionado = useMemo(() => {
-    const doCartao = comprasCartao.filter(
-      (c) => c.banco === bancoFiltro && c.mesFatura === mesSelecionado
+    const doCartao = comprasDoMesSelecionado.filter(
+      (c) => c.banco === bancoFiltro
     );
     let vicDireto = 0;
     let leDireto = 0;
@@ -1180,7 +1210,7 @@ export default function DashboardPage() {
       totalGeralCartao: vicDireto + leDireto + divTotal + poupTotal,
       quantidadeItens: doCartao.length,
     };
-  }, [comprasCartao, bancoFiltro, mesSelecionado]);
+  }, [comprasDoMesSelecionado, bancoFiltro]);
 
   // Projeção de Parcelas Futuras do Cartão Selecionado na Aba 4
   const projecaoCartao = useMemo(() => {
@@ -1891,12 +1921,33 @@ export default function DashboardPage() {
     });
   };
 
-  const alterarPagadorCompra = (id: string, novoPagador: Pagador) => {
-    setComprasCartao((prev) =>
-      prev.map((c) =>
-        c.id === id ? { ...c, quemPaga: novoPagador, isNova: false, pagadorDefinido: true } : c
-      )
-    );
+  const alterarPagadorCompra = (compraOuId: string | CompraCartao, novoPagador: Pagador) => {
+    const id = typeof compraOuId === "string" ? compraOuId : compraOuId.id;
+    const obj = typeof compraOuId === "object" ? compraOuId : comprasDoMesSelecionado.find((c) => c.id === id);
+
+    setComprasCartao((prev) => {
+      const idx = prev.findIndex((c) => c.id === id);
+      if (idx >= 0) {
+        const cp = [...prev];
+        cp[idx] = { ...cp[idx], quemPaga: novoPagador, isNova: false, pagadorDefinido: true };
+        return cp;
+      }
+      if (obj) {
+        return [
+          ...prev,
+          {
+            ...obj,
+            id: `compra-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+            mesFatura: obj.mesFatura || mesSelecionado,
+            quemPaga: novoPagador,
+            isNova: false,
+            isProjetada: false,
+            pagadorDefinido: true,
+          },
+        ];
+      }
+      return prev;
+    });
   };
 
   const exportarBackup = () => {
@@ -2009,19 +2060,50 @@ export default function DashboardPage() {
             {/* Barra de Ação Principal */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
               <div>
-                <h2 className="text-lg font-bold text-slate-800">Resumo Geral do Mês ({formatarMesAnoLabel(mesSelecionado)})</h2>
-                <p className="text-sm text-slate-500">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h2 className="text-lg font-bold text-slate-800">Resumo Geral do Mês ({formatarMesAnoLabel(mesSelecionado)})</h2>
+                  <span className="bg-emerald-100 text-emerald-800 text-xs font-bold px-2.5 py-0.5 rounded-full border border-emerald-300">
+                    {mesSelecionado === "2026-12" ? "Dezembro Projetado Ativo" : `Mês ${formatarMesAnoLabel(mesSelecionado)}`}
+                  </span>
+                </div>
+                <p className="text-sm text-slate-500 mt-0.5">
                   Consolidado automático dos salários líquidos, faturas importadas e contas da casa.
                 </p>
               </div>
-              <button
-                onClick={() => setModalAberto(true)}
-                className="inline-flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-5 py-3 rounded-xl shadow-sm transition"
-              >
-                <Plus className="w-5 h-5" />
-                Incluir Contas / Fatura PDF
-              </button>
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <button
+                  type="button"
+                  onClick={handleConfirmarMesEAvancar}
+                  className="inline-flex items-center justify-center gap-2 bg-slate-900 hover:bg-slate-800 text-white font-bold px-4 py-3 rounded-xl shadow-sm transition text-sm"
+                  title="Confirma o fechamento deste mês e avança automaticamente para projetar o próximo mês"
+                >
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                  Confirmação do Mês & Próximo
+                </button>
+                <button
+                  onClick={() => setModalAberto(true)}
+                  className="inline-flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-4 py-3 rounded-xl shadow-sm transition text-sm"
+                >
+                  <Plus className="w-4 h-4" />
+                  Incluir Contas / Fatura PDF
+                </button>
+              </div>
             </div>
+
+            {feedbackMesConfirmado && (
+              <div className="p-4 bg-emerald-50 border border-emerald-300 text-emerald-900 rounded-2xl text-xs font-bold flex items-center justify-between gap-2 shadow-sm animate-in fade-in duration-200">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+                  <span>{feedbackMesConfirmado}</span>
+                </div>
+                <button
+                  onClick={() => setFeedbackMesConfirmado(null)}
+                  className="text-emerald-700 hover:text-emerald-900 font-bold px-2 py-1"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
 
             {/* 4 Cards Principais (KPIs) */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -2674,10 +2756,11 @@ export default function DashboardPage() {
                         <button
                           type="button"
                           onClick={() => alternarStatusPoupanca(mov)}
-                          className="text-[11px] text-slate-500 hover:text-amber-800 hover:bg-amber-50 border border-slate-200 hover:border-amber-300 px-2.5 py-1 rounded-lg transition"
-                          title="Mover de volta para previsão futura"
+                          className="text-xs font-bold text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-300 px-3 py-1.5 rounded-xl shadow-2xs transition flex items-center gap-1.5"
+                          title="Retornar este valor para as previsões futuras pendentes"
                         >
-                          Tornar Previsão
+                          <RotateCcw className="w-3.5 h-3.5 text-amber-600" />
+                          Retorno
                         </button>
 
                         <button
@@ -2805,9 +2888,9 @@ export default function DashboardPage() {
             <div className="bg-slate-900 text-white p-5 rounded-2xl shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
                 <div className="flex items-center gap-2">
-                  <h2 className="text-lg font-bold">Salários & Previsionamento ({formatarMesAnoLabel(mesSelecionado)})</h2>
+                  <h2 className="text-lg font-bold">Salários & Previsão Mensal ({formatarMesAnoLabel(mesSelecionado)})</h2>
                   <span className="bg-blue-500/20 text-blue-300 text-xs font-semibold px-2.5 py-0.5 rounded-full border border-blue-500/30">
-                    Legislação RS 2026
+                    Regras RS • Simulação Salarial
                   </span>
                 </div>
                 <p className="text-xs text-slate-400 mt-1">
@@ -3016,6 +3099,18 @@ export default function DashboardPage() {
                   </div>
                 )}
 
+                {/* Banner informativo quando houver compras projetadas neste mês */}
+                {comprasDoMesSelecionado.some((c) => c.banco === bancoFiltro && c.isProjetada) && (
+                  <div className="p-3.5 rounded-xl bg-blue-50 border border-blue-200 text-blue-900 flex items-center justify-between gap-3 text-xs">
+                    <div className="flex items-center gap-2 font-medium">
+                      <CreditCard className="w-4 h-4 text-blue-600 shrink-0" />
+                      <span>
+                        Exibindo <strong>parcelas projetadas</strong> para o cartão <strong>{bancoFiltro}</strong> em {formatarMesAnoLabel(mesSelecionado)}. Quando você receber e importar o PDF da fatura oficial fechada, os lançamentos serão atualizados automaticamente.
+                      </span>
+                    </div>
+                  </div>
+                )}
+
                 {/* Tabela de Lançamentos do Cartão Selecionado */}
                 <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
                   <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
@@ -3034,16 +3129,19 @@ export default function DashboardPage() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
-                        {comprasCartao
-                          .filter((c) => c.banco === bancoFiltro && c.mesFatura === mesSelecionado)
+                        {comprasDoMesSelecionado
+                          .filter((c) => c.banco === bancoFiltro)
                           .map((compra) => {
                             const isNova = Boolean(compra.isNova);
+                            const isProjetada = Boolean(compra.isProjetada);
                             return (
                               <tr
                                 key={compra.id}
                                 className={`transition-colors ${
                                   isNova
                                     ? "bg-rose-50/90 hover:bg-rose-100/90 border-l-4 border-l-rose-500"
+                                    : isProjetada
+                                    ? "bg-blue-50/40 hover:bg-blue-50/70 border-l-4 border-l-blue-400"
                                     : "hover:bg-slate-50"
                                 }`}
                               >
@@ -3054,6 +3152,11 @@ export default function DashboardPage() {
                                     {compra.parcelaInfo && (
                                       <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-semibold">
                                         {compra.parcelaInfo}
+                                      </span>
+                                    )}
+                                    {isProjetada && (
+                                      <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 border border-blue-300">
+                                        Projetado
                                       </span>
                                     )}
                                     {isNova && (
@@ -3071,7 +3174,7 @@ export default function DashboardPage() {
                                     {(["VIC", "LE", "DIV", "POUP"] as Pagador[]).map((opcao) => (
                                       <button
                                         key={opcao}
-                                        onClick={() => alterarPagadorCompra(compra.id, opcao)}
+                                        onClick={() => alterarPagadorCompra(compra, opcao)}
                                         className={`px-2.5 py-1 text-xs font-bold transition ${
                                           compra.quemPaga === opcao
                                             ? opcao === "VIC"
@@ -3989,6 +4092,139 @@ export default function DashboardPage() {
                     </span>
                   </div>
                 </div>
+              </div>
+            </div>
+
+            {/* ========================================================= */}
+            {/* ACOMPANHAMENTO DE EVOLUÇÃO (NOV/26 HISTÓRICO VS DEZ/26 ATIVO E PROJEÇÕES) */}
+            {/* ========================================================= */}
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden space-y-4 p-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-4">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <BarChart3 className="w-5 h-5 text-emerald-600" />
+                    <h3 className="font-bold text-lg text-slate-900">
+                      Acompanhamento de Evolução Financeira (Novembro vs Dezembro e Próximos Meses)
+                    </h3>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Compare o histórico realizado de Novembro com o planejamento de Dezembro e as projeções futuras para acompanhar a evolução da sua sobra e comprometimento.
+                  </p>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs text-left">
+                  <thead className="bg-slate-50 text-slate-600 uppercase font-bold text-[10px] border-b border-slate-200">
+                    <tr>
+                      <th className="px-4 py-3">Mês de Referência</th>
+                      <th className="px-4 py-3">Status</th>
+                      <th className="px-4 py-3">Renda Familiar</th>
+                      <th className="px-4 py-3">Contas Fixas</th>
+                      <th className="px-4 py-3">Faturas Cartões</th>
+                      <th className="px-4 py-3">Total Despesas</th>
+                      <th className="px-4 py-3">Sobra Líquida</th>
+                      <th className="px-4 py-3">% Comprometimento</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 font-medium">
+                    {/* Linha Histórica Oficial de Novembro/2026 */}
+                    <tr className="bg-emerald-50/50 hover:bg-emerald-50/80 transition">
+                      <td className="px-4 py-3.5 font-bold text-slate-900">
+                        Novembro/2026
+                      </td>
+                      <td className="px-4 py-3.5">
+                        <span className="bg-emerald-100 text-emerald-800 border border-emerald-300 px-2.5 py-0.5 rounded-full text-[10px] font-bold">
+                          ✓ Realizado / Fechado
+                        </span>
+                      </td>
+                      <td className="px-4 py-3.5 font-bold text-slate-800">
+                        R$ 10.918,85
+                      </td>
+                      <td className="px-4 py-3.5 text-slate-600">
+                        R$ 3.259,53
+                      </td>
+                      <td className="px-4 py-3.5 text-slate-600">
+                        R$ 6.500,03
+                      </td>
+                      <td className="px-4 py-3.5 font-bold text-slate-900">
+                        R$ 9.759,56
+                      </td>
+                      <td className="px-4 py-3.5 font-black text-emerald-700">
+                        + R$ 1.159,29
+                      </td>
+                      <td className="px-4 py-3.5 font-bold text-amber-700">
+                        89,4%
+                      </td>
+                    </tr>
+
+                    {/* Linha de Dezembro/2026 (Mês Ativo de Planejamento) */}
+                    <tr className="bg-blue-50/60 hover:bg-blue-50/90 transition">
+                      <td className="px-4 py-3.5 font-bold text-blue-900 flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-blue-600 animate-pulse"></span>
+                        Dezembro/2026
+                      </td>
+                      <td className="px-4 py-3.5">
+                        <span className="bg-blue-100 text-blue-800 border border-blue-300 px-2.5 py-0.5 rounded-full text-[10px] font-bold">
+                          ⚡ Mês Ativo de Planejamento
+                        </span>
+                      </td>
+                      <td className="px-4 py-3.5 font-bold text-slate-800">
+                        {formatarMoeda(salarioLiquidoTotalCasal)}
+                      </td>
+                      <td className="px-4 py-3.5 text-slate-600">
+                        R$ 2.237,66
+                      </td>
+                      <td className="px-4 py-3.5 text-slate-600 font-semibold">
+                        R$ 2.901,81 <span className="text-[10px] text-blue-700 font-normal">(Projetado)</span>
+                      </td>
+                      <td className="px-4 py-3.5 font-bold text-slate-900">
+                        R$ 5.139,47
+                      </td>
+                      <td className="px-4 py-3.5 font-black text-emerald-700">
+                        + {formatarMoeda(salarioLiquidoTotalCasal - 5139.47)}
+                      </td>
+                      <td className="px-4 py-3.5 font-bold text-emerald-700">
+                        {salarioLiquidoTotalCasal > 0 ? `${((5139.47 / salarioLiquidoTotalCasal) * 100).toFixed(1)}%` : "0%"}
+                      </td>
+                    </tr>
+
+                    {/* Próximos Meses Projetados */}
+                    {projecao6MesesCalculada
+                      .filter((p) => p.mesAno > "2026-12")
+                      .slice(0, 4)
+                      .map((p) => (
+                        <tr key={p.mesAno} className="hover:bg-slate-50 transition">
+                          <td className="px-4 py-3.5 font-bold text-slate-700">
+                            {p.label}
+                          </td>
+                          <td className="px-4 py-3.5">
+                            <span className="bg-slate-100 text-slate-600 border border-slate-200 px-2 py-0.5 rounded-full text-[10px] font-medium">
+                              ⏳ Projeção Futura
+                            </span>
+                          </td>
+                          <td className="px-4 py-3.5 text-slate-700 font-semibold">
+                            {formatarMoeda(p.rendaCasal)}
+                          </td>
+                          <td className="px-4 py-3.5 text-slate-500">
+                            {formatarMoeda(p.contasCasal)}
+                          </td>
+                          <td className="px-4 py-3.5 text-slate-500">
+                            {formatarMoeda(p.cartoesCasal)}
+                          </td>
+                          <td className="px-4 py-3.5 font-bold text-slate-800">
+                            {formatarMoeda(p.totalComprometidoCasal)}
+                          </td>
+                          <td className={`px-4 py-3.5 font-black ${p.sobraCasal >= 0 ? "text-emerald-700" : "text-rose-600"}`}>
+                            {p.sobraCasal >= 0 ? "+" : ""}{formatarMoeda(p.sobraCasal)}
+                          </td>
+                          <td className={`px-4 py-3.5 font-bold ${p.pctComprometidoCasal <= 70 ? "text-emerald-700" : "text-amber-700"}`}>
+                            {p.pctComprometidoCasal.toFixed(1)}%
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
               </div>
             </div>
 
@@ -5025,18 +5261,29 @@ function BarraSeletorMes({
       </div>
 
       <div className="flex items-center gap-2 flex-wrap">
-        {/* Botão de Voltar ao Mês Atual (Aparece quando outro mês é selecionado) */}
-        {!isAtual && (
-          <button
-            type="button"
-            onClick={() => onSelecionarMes(mesAtual)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm transition"
-            title="Voltar instantaneamente para o mês atual em tempo real"
-          >
-            <RotateCcw className="w-3.5 h-3.5" />
-            Voltar ao Mês Atual ({formatarMesAnoLabel(mesAtual)})
-          </button>
-        )}
+        {/* Atalhos Rápidos de Mês: Novembro, Dezembro e Janeiro */}
+        <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-900/60 p-1 rounded-xl border border-slate-200 dark:border-slate-700">
+          {[
+            { mes: "2026-11", label: "Nov/26" },
+            { mes: "2026-12", label: "Dez/26" },
+            { mes: "2027-01", label: "Jan/27" },
+          ].map((item) => (
+            <button
+              key={item.mes}
+              type="button"
+              onClick={() => onSelecionarMes(item.mes)}
+              className={`px-2.5 py-1 text-xs font-bold rounded-lg transition ${
+                mesSelecionado === item.mes
+                  ? "bg-slate-900 text-white shadow-xs"
+                  : modoDark
+                  ? "text-slate-300 hover:text-white hover:bg-slate-800"
+                  : "text-slate-600 hover:text-slate-900 hover:bg-slate-200"
+              }`}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
 
         {/* Setas de navegação mês anterior / próximo mês */}
         <div className="flex items-center bg-slate-900/10 dark:bg-slate-950/40 p-0.5 rounded-xl border border-slate-300/40 dark:border-slate-700">
@@ -5211,7 +5458,7 @@ function SalarioCard({
             </span>
           </div>
           <p className="text-xs text-white/80 mt-0.5">
-            Gestão Salarial RS 2026 • {mesAnoLabel}
+            Gestão Salarial RS • {mesAnoLabel}
           </p>
         </div>
         <span className="text-xs bg-white/10 px-2.5 py-1 rounded-full font-semibold border border-white/20">
@@ -5221,7 +5468,7 @@ function SalarioCard({
 
       <div className="p-6 space-y-6">
         {/* ========================================================= */}
-        {/* 1º PASSO: PREVISÃO DE SALÁRIO (SIMULADOR RS 2026)         */}
+        {/* 1º PASSO: PREVISÃO DE SALÁRIO (SIMULADOR DE FOLHA RS)     */}
         {/* ========================================================= */}
         <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/50 space-y-4">
           <div className="flex items-center justify-between">
@@ -5229,7 +5476,7 @@ function SalarioCard({
               <span className="bg-blue-600 text-white w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black">
                 1º
               </span>
-              Previsão de Salário • Simulador Militar RS 2026
+              Previsão Salarial • Simulador de Folha RS
             </h4>
             <span className="text-[11px] font-semibold text-slate-500">
               Previsto: {formatarMoeda(resultado.totalDisponivelMes)}
