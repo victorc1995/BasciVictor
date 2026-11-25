@@ -60,6 +60,16 @@ const MESES_MAP: Record<string, string> = {
   dezembro: "12",
 };
 
+export class PDFPasswordRequiredError extends Error {
+  code = "PASSWORD_REQUIRED";
+  senhaIncorreta: boolean;
+  constructor(message = "Este PDF está protegido por senha.", senhaIncorreta = false) {
+    super(message);
+    this.name = "PDFPasswordRequiredError";
+    this.senhaIncorreta = senhaIncorreta;
+  }
+}
+
 /**
  * Extrai todo o texto de qualquer PDF no navegador usando pdfjs-dist
  * com suporte resiliente a workers locais / CDN e senhas padrão de faturas
@@ -80,33 +90,58 @@ export async function extrairTextoDePDF(file: File, senhaUsuario?: string): Prom
 
   const arrayBuffer = await file.arrayBuffer();
 
-  // Senhas candidatas comuns em faturas protegidas no Brasil (iniciais de CPF de Victor ou Letícia)
-  const senhasCandidatas: (string | undefined)[] = [
-    senhaUsuario,
-    undefined,
-    "032252",
-    "017474",
-    "03225244074",
-    "01747499021",
-    "181126",
-    "2026",
-  ].filter((s, idx, arr) => s !== undefined ? arr.indexOf(s) === idx : true);
+  // Se o usuário digitou uma senha, testa a senha e suas variações numéricas (ex: sem máscara, primeiros 6 dígitos)
+  const senhasCandidatas: (string | undefined)[] = [];
+  if (senhaUsuario && senhaUsuario.trim()) {
+    const raw = senhaUsuario.trim();
+    const digitos = raw.replace(/\D/g, "");
+    senhasCandidatas.push(raw);
+    if (digitos && digitos !== raw) {
+      senhasCandidatas.push(digitos);
+    }
+    // Se digitou CPF com 11 dígitos, testa também 6 e 5 dígitos que bancos costumam exigir
+    if (digitos.length >= 6) {
+      senhasCandidatas.push(digitos.slice(0, 6));
+      senhasCandidatas.push(digitos.slice(0, 5));
+    }
+  } else {
+    // Se não forneceu senha, tenta sem senha e depois os formatos de CPF mais comuns
+    senhasCandidatas.push(
+      undefined,
+      "032252",
+      "017474",
+      "03225",
+      "01747",
+      "03225244074",
+      "01747499021",
+      "181126",
+      "2026"
+    );
+  }
 
   let doc: any = null;
   let ultimoErro: any = null;
+  let houveErroSenha = false;
 
   for (const pass of senhasCandidatas) {
     try {
+      // Clona o buffer para evitar que o worker do PDF.js faça detach em tentativas sucessivas
       const loadingTask = pdfjsLib.getDocument({
-        data: arrayBuffer,
+        data: new Uint8Array(arrayBuffer.slice(0)),
         password: pass,
       });
       doc = await loadingTask.promise;
       if (doc) break;
     } catch (err: any) {
       ultimoErro = err;
-      if (err?.name === "PasswordException") {
-        // Tenta próxima senha
+      if (
+        err?.name === "PasswordException" ||
+        err?.code === 1 ||
+        err?.code === 2 ||
+        err?.message?.toLowerCase().includes("password") ||
+        err?.message?.toLowerCase().includes("senha")
+      ) {
+        houveErroSenha = true;
         continue;
       }
       break;
@@ -114,9 +149,12 @@ export async function extrairTextoDePDF(file: File, senhaUsuario?: string): Prom
   }
 
   if (!doc) {
-    if (ultimoErro?.name === "PasswordException") {
-      throw new Error(
-        "Este PDF está protegido com senha pelo banco. Por favor, remova a proteção ou informe a senha correta (geralmente os primeiros dígitos do CPF)."
+    if (houveErroSenha || ultimoErro?.name === "PasswordException") {
+      throw new PDFPasswordRequiredError(
+        senhaUsuario
+          ? "Senha incorreta para abrir este arquivo PDF. Verifique os dígitos e tente novamente."
+          : "Este PDF está protegido por senha. Por favor, digite a senha da fatura para continuar.",
+        Boolean(senhaUsuario)
       );
     }
     throw ultimoErro || new Error("Não foi possível carregar o arquivo PDF.");

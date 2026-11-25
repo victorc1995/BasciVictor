@@ -33,6 +33,8 @@ import {
   ChevronDown,
   ChevronUp,
   ArrowUpRight,
+  Lock,
+  Key,
 } from "lucide-react";
 import {
   CartaoBanco,
@@ -69,6 +71,7 @@ import {
   extrairDadosQualquerPDF,
   extrairDadosContrachequePDF,
   parsearLinhasFatura,
+  PDFPasswordRequiredError,
 } from "@/lib/pdf-parser";
 
 const obterMesAtualReal = (): string => {
@@ -148,9 +151,16 @@ export default function DashboardPage() {
   const [modalSalarioVictorVal, setModalSalarioVictorVal] = useState("");
   const [modalSalarioLeticiaVal, setModalSalarioLeticiaVal] = useState("");
 
-  // Upload PDF
+  // Upload PDF e Faturas Protegidas por Senha
   const [bancoPDF, setBancoPDF] = useState<CartaoBanco>("C6 Bank");
   const [statusPDF, setStatusPDF] = useState<string>("");
+  const [modalSenhaPdf, setModalSenhaPdf] = useState(false);
+  const [arquivoPdfPendente, setArquivoPdfPendente] = useState<File | null>(null);
+  const [senhaDigitadaPdf, setSenhaDigitadaPdf] = useState("");
+  const [mostrarSenhaPdf, setMostrarSenhaPdf] = useState(false);
+  const [erroSenhaPdf, setErroSenhaPdf] = useState<string | null>(null);
+  const [carregandoSenhaPdf, setCarregandoSenhaPdf] = useState(false);
+  const [senhaPreviaInput, setSenhaPreviaInput] = useState("");
 
   // Formulário Poupança
   const [poupData, setPoupData] = useState<string>(() => new Date().toISOString().slice(0, 10));
@@ -1631,13 +1641,19 @@ export default function DashboardPage() {
     ]);
   };
 
-  const handleUploadQualquerPDF = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setStatusPDF("Lendo arquivo PDF e analisando dados...");
+  const processarArquivoPDF = async (file: File, senha?: string) => {
+    setStatusPDF(`Lendo "${file.name}" e analisando dados...`);
+    setCarregandoSenhaPdf(true);
+    setErroSenhaPdf(null);
     try {
-      const dados = await extrairDadosQualquerPDF(file);
+      const dados = await extrairDadosQualquerPDF(file, senha || senhaPreviaInput || undefined);
       const mesAlvo = dados.mesAno || (dados.vencimento ? dados.vencimento.slice(0, 7) : mesSelecionado);
+
+      // Sucesso na extração! Fecha modal de senha
+      setModalSenhaPdf(false);
+      setArquivoPdfPendente(null);
+      setSenhaDigitadaPdf("");
+      setErroSenhaPdf(null);
 
       // Preenche os campos do formulário para visualização/conferência do usuário
       if (dados.valor > 0) {
@@ -1766,10 +1782,40 @@ export default function DashboardPage() {
 
       // Alterna automaticamente para a aba de conferência manual
       setTipoInclusao("conta");
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      setStatusPDF("Erro ao processar o PDF. Verifique se o arquivo não possui senha ou se é legível.");
+      const isPasswordError =
+        err instanceof PDFPasswordRequiredError ||
+        err?.code === "PASSWORD_REQUIRED" ||
+        err?.name === "PasswordException" ||
+        err?.message?.toLowerCase().includes("senha") ||
+        err?.message?.toLowerCase().includes("password") ||
+        err?.code === 1 ||
+        err?.code === 2;
+
+      if (isPasswordError) {
+        setArquivoPdfPendente(file);
+        setModalSenhaPdf(true);
+        if (senha) {
+          setErroSenhaPdf("Senha incorreta. Verifique os dígitos do titular e tente novamente.");
+          setStatusPDF("Senha incorreta informada para a fatura.");
+        } else {
+          setErroSenhaPdf(null);
+          setStatusPDF("Fatura protegida por senha. Digite a senha na janela para desbloquear.");
+        }
+      } else {
+        setStatusPDF(`Erro ao processar o PDF: ${err?.message || "Verifique se o arquivo não possui senha ou se é legível."}`);
+      }
+    } finally {
+      setCarregandoSenhaPdf(false);
     }
+  };
+
+  const handleUploadQualquerPDF = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    await processarArquivoPDF(file, senhaPreviaInput || undefined);
   };
 
   const adicionarMovPoupanca = (e: React.FormEvent) => {
@@ -4954,6 +5000,27 @@ export default function DashboardPage() {
                   <p>Envie o PDF de qualquer boleto (Luz, Água, Internet, Telefone, Carro, Aluguel ou Fatura de Cartão). O sistema extrai automaticamente o <strong>valor a pagar</strong>, a <strong>data de vencimento</strong> e a <strong>categoria</strong>.</p>
                 </div>
 
+                {/* Campo opcional de senha prévia para faturas protegidas */}
+                <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs">
+                  <Lock className="w-4 h-4 text-slate-400 flex-shrink-0" />
+                  <input
+                    type="password"
+                    placeholder="Senha da fatura (opcional se o PDF tiver senha do banco)"
+                    value={senhaPreviaInput}
+                    onChange={(e) => setSenhaPreviaInput(e.target.value)}
+                    className="w-full bg-transparent focus:outline-none text-slate-700 placeholder:text-slate-400 font-mono"
+                  />
+                  {senhaPreviaInput && (
+                    <button
+                      type="button"
+                      onClick={() => setSenhaPreviaInput("")}
+                      className="text-slate-400 hover:text-slate-600 text-xs px-1"
+                    >
+                      Limpar
+                    </button>
+                  )}
+                </div>
+
                 <label className="border-2 border-dashed border-emerald-400 hover:border-emerald-600 bg-emerald-50/40 hover:bg-emerald-50/70 rounded-2xl p-8 flex flex-col items-center justify-center cursor-pointer transition text-center group">
                   <FileText className="w-10 h-10 text-emerald-600 mb-3 group-hover:scale-110 transition transform" />
                   <span className="text-sm font-bold text-slate-800">Clique para selecionar qualquer conta em PDF</span>
@@ -4965,8 +5032,143 @@ export default function DashboardPage() {
                   </span>
                   <input type="file" accept="application/pdf" onChange={handleUploadQualquerPDF} className="hidden" />
                 </label>
+
+                {statusPDF && (
+                  <div className={`p-3 rounded-xl text-xs flex items-center gap-2 ${
+                    statusPDF.includes("Erro") || statusPDF.includes("incorreta")
+                      ? "bg-red-50 border border-red-200 text-red-700"
+                      : "bg-blue-50 border border-blue-200 text-blue-700"
+                  }`}>
+                    {statusPDF.includes("Lendo") || statusPDF.includes("analisando") ? (
+                      <RefreshCw className="w-4 h-4 animate-spin flex-shrink-0 text-blue-500" />
+                    ) : (
+                      <AlertCircle className="w-4 h-4 flex-shrink-0 text-slate-500" />
+                    )}
+                    <span>{statusPDF}</span>
+                  </div>
+                )}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* MODAL: SENHA DO PDF / FATURA PROTEGIDA                     */}
+      {/* ========================================================= */}
+      {modalSenhaPdf && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[70] flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 border border-slate-100 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center flex-shrink-0">
+                  <Lock className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-base text-slate-800">Fatura Protegida por Senha</h3>
+                  <p className="text-xs text-slate-500 truncate max-w-[240px]">
+                    {arquivoPdfPendente ? arquivoPdfPendente.name : "Arquivo PDF protegido"}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setModalSenhaPdf(false);
+                  setArquivoPdfPendente(null);
+                  setErroSenhaPdf(null);
+                }}
+                className="text-slate-400 hover:text-slate-700 font-bold p-1 rounded-lg"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="bg-amber-50/80 border border-amber-200 rounded-xl p-3 text-xs text-amber-900 space-y-1.5">
+              <p className="font-semibold flex items-center gap-1.5">
+                <Key className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
+                Dicas de senha para faturas bancárias (Sicredi):
+              </p>
+              <ul className="list-disc list-inside text-[11px] text-amber-800 space-y-0.5 pl-1">
+                <li>Geralmente são os <strong>5 ou 6 primeiros dígitos do CPF</strong> do titular (ex: <code>032252</code> ou <code>017474</code>);</li>
+                <li>Ou o <strong>CPF completo</strong> (apenas números);</li>
+                <li>Ou a <strong>data de nascimento</strong> do titular (DDMMAAAA).</li>
+              </ul>
+            </div>
+
+            <div className="space-y-2">
+              <label className="block text-xs font-semibold text-slate-700">
+                Digite a senha para abrir e importar a fatura:
+              </label>
+              <div className="relative">
+                <input
+                  type={mostrarSenhaPdf ? "text" : "password"}
+                  value={senhaDigitadaPdf}
+                  onChange={(e) => {
+                    setSenhaDigitadaPdf(e.target.value);
+                    if (erroSenhaPdf) setErroSenhaPdf(null);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && senhaDigitadaPdf.trim() && arquivoPdfPendente && !carregandoSenhaPdf) {
+                      processarArquivoPDF(arquivoPdfPendente, senhaDigitadaPdf.trim());
+                    }
+                  }}
+                  placeholder="Ex: 032252 ou CPF"
+                  autoFocus
+                  className="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm font-mono tracking-wider focus:ring-2 focus:ring-emerald-500 focus:outline-none pr-16"
+                />
+                <button
+                  type="button"
+                  onClick={() => setMostrarSenhaPdf(!mostrarSenhaPdf)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs font-medium px-1"
+                >
+                  {mostrarSenhaPdf ? "Ocultar" : "Mostrar"}
+                </button>
+              </div>
+            </div>
+
+            {erroSenhaPdf && (
+              <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-600 flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 flex-shrink-0 text-red-500" />
+                <span>{erroSenhaPdf}</span>
+              </div>
+            )}
+
+            <div className="flex gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setModalSenhaPdf(false);
+                  setArquivoPdfPendente(null);
+                  setErroSenhaPdf(null);
+                }}
+                disabled={carregandoSenhaPdf}
+                className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold py-2.5 rounded-xl text-xs transition"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (arquivoPdfPendente && senhaDigitadaPdf.trim()) {
+                    processarArquivoPDF(arquivoPdfPendente, senhaDigitadaPdf.trim());
+                  }
+                }}
+                disabled={carregandoSenhaPdf || !senhaDigitadaPdf.trim()}
+                className="flex-1 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold py-2.5 rounded-xl text-xs transition flex items-center justify-center gap-1.5 shadow-md shadow-emerald-600/20"
+              >
+                {carregandoSenhaPdf ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    Desbloqueando...
+                  </>
+                ) : (
+                  <>
+                    <Lock className="w-3.5 h-3.5" />
+                    Desbloquear e Ler
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}
