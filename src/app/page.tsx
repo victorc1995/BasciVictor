@@ -57,6 +57,7 @@ import {
   obterStatusVencimento,
   ordenarContasPorUrgencia,
   somarMeses,
+  normalizarDataParaTimestamp,
 } from "@/lib/finance-engine";
 import {
   INITIAL_COMPRAS_CARTAO,
@@ -1223,14 +1224,22 @@ export default function DashboardPage() {
   }, [comprasDoMesSelecionado, bancoFiltro]);
 
   // Projeção de Parcelas Futuras do Cartão Selecionado na Aba 4
+  // C6 Bank: de Dezembro/2026 para frente
+  // Sicredi: de Janeiro/2027 para frente (já que a fatura de dezembro/2026 já está incluída no sistema)
+  const mesBaseProjecaoCartao = useMemo(() => {
+    if (bancoFiltro === "Sicredi") {
+      return "2027-01";
+    }
+    return "2026-12";
+  }, [bancoFiltro]);
+
   const projecaoCartao = useMemo(() => {
-    return calcularProjecaoParcelasCartao(bancoFiltro, mesSelecionado, comprasCartao);
-  }, [bancoFiltro, mesSelecionado, comprasCartao]);
+    return calcularProjecaoParcelasCartao(bancoFiltro, mesBaseProjecaoCartao, comprasCartao);
+  }, [bancoFiltro, mesBaseProjecaoCartao, comprasCartao]);
 
   const dadosMesProjecaoCartao = useMemo(() => {
     return (
       projecaoCartao.find((p) => p.mesAno === mesVisualizadoProjecaoCartao) ||
-      projecaoCartao[1] ||
       projecaoCartao[0]
     );
   }, [projecaoCartao, mesVisualizadoProjecaoCartao]);
@@ -3021,7 +3030,14 @@ export default function DashboardPage() {
                   {(["C6 Bank", "Sicredi"] as CartaoBanco[]).map((banco) => (
                     <button
                       key={banco}
-                      onClick={() => setBancoFiltro(banco)}
+                      onClick={() => {
+                        setBancoFiltro(banco);
+                        if (banco === "Sicredi") {
+                          setMesVisualizadoProjecaoCartao("2027-01");
+                        } else {
+                          setMesVisualizadoProjecaoCartao("2026-12");
+                        }
+                      }}
                       className={`px-4 py-2 rounded-lg font-bold text-sm transition ${
                         bancoFiltro === banco
                           ? "bg-slate-900 text-white shadow-sm"
@@ -3177,6 +3193,11 @@ export default function DashboardPage() {
                       <tbody className="divide-y divide-slate-100">
                         {comprasDoMesSelecionado
                           .filter((c) => c.banco === bancoFiltro)
+                          .sort((a, b) => {
+                            const diff = normalizarDataParaTimestamp(b.dataCompra, mesSelecionado) - normalizarDataParaTimestamp(a.dataCompra, mesSelecionado);
+                            if (diff !== 0) return diff;
+                            return b.valor - a.valor;
+                          })
                           .map((compra) => {
                             const isNova = Boolean(compra.isNova);
                             const isProjetada = Boolean(compra.isProjetada);
@@ -3358,6 +3379,7 @@ export default function DashboardPage() {
                     <table className="w-full text-sm text-left">
                       <thead className="bg-slate-50 text-slate-500 text-xs uppercase">
                         <tr>
+                          <th className="px-6 py-3">Data Compra</th>
                           <th className="px-6 py-3">Estabelecimento</th>
                           <th className="px-6 py-3">Titular</th>
                           <th className="px-6 py-3">Parcela</th>
@@ -3369,13 +3391,20 @@ export default function DashboardPage() {
                       <tbody className="divide-y divide-slate-100">
                         {dadosMesProjecaoCartao.parcelas.length === 0 ? (
                           <tr>
-                            <td colSpan={6} className="px-6 py-8 text-center text-xs text-slate-400">
+                            <td colSpan={7} className="px-6 py-8 text-center text-xs text-slate-400">
                               Nenhuma parcela ativa prevista para {dadosMesProjecaoCartao.label} no {bancoFiltro}.
                             </td>
                           </tr>
                         ) : (
-                          dadosMesProjecaoCartao.parcelas.map((parc) => (
+                          [...dadosMesProjecaoCartao.parcelas]
+                            .sort((a, b) => {
+                              const diff = normalizarDataParaTimestamp(b.dataCompra, dadosMesProjecaoCartao.mesAno) - normalizarDataParaTimestamp(a.dataCompra, dadosMesProjecaoCartao.mesAno);
+                              if (diff !== 0) return diff;
+                              return b.valor - a.valor;
+                            })
+                            .map((parc) => (
                             <tr key={parc.id} className="hover:bg-slate-50">
+                              <td className="px-6 py-3 text-slate-500 whitespace-nowrap text-xs">{parc.dataCompra || "-"}</td>
                               <td className="px-6 py-3 font-semibold text-slate-800">{parc.descricao}</td>
                               <td className="px-6 py-3 text-xs text-slate-500">{parc.titularCartao}</td>
                               <td className="px-6 py-3">

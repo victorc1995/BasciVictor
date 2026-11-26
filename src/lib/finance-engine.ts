@@ -266,6 +266,7 @@ export interface ProjecaoFaturaCartaoMes {
     id: string;
     descricao: string;
     titularCartao: string;
+    dataCompra?: string;
     parcelaAtual: number;
     totalParcelas: number;
     valor: number;
@@ -295,11 +296,50 @@ export function formatarMesAnoLabel(mesAno: string): string {
   return `${meses[idx] || mes}/${ano}`;
 }
 
-function parseParcela(info?: string): { atual: number; total: number } | null {
+export function normalizarDataParaTimestamp(dataStr?: string, mesReferencia?: string): number {
+  if (!dataStr || typeof dataStr !== "string") return 0;
+  const s = dataStr.trim();
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
+    return new Date(s.slice(0, 10) + "T12:00:00Z").getTime() || 0;
+  }
+  const matchFull = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (matchFull) {
+    const dia = parseInt(matchFull[1], 10);
+    const mes = parseInt(matchFull[2], 10);
+    const ano = parseInt(matchFull[3], 10);
+    return new Date(Date.UTC(ano, mes - 1, dia, 12, 0, 0)).getTime();
+  }
+  const matchShort = s.match(/^(\d{1,2})\/(\d{1,2})/);
+  if (matchShort) {
+    const dia = parseInt(matchShort[1], 10);
+    const mes = parseInt(matchShort[2], 10);
+    let ano = mesReferencia ? parseInt(mesReferencia.slice(0, 4), 10) : 2026;
+    if (mesReferencia) {
+      const mesRefNum = parseInt(mesReferencia.slice(5, 7), 10);
+      if (mes > mesRefNum && mesRefNum <= 2) {
+        ano -= 1;
+      }
+    }
+    return new Date(Date.UTC(ano, mes - 1, dia, 12, 0, 0)).getTime();
+  }
+  return 0;
+}
+
+export function parseParcela(info?: string): { atual: number; total: number } | null {
   if (!info) return null;
   const match = info.match(/(\d+)\s*\/\s*(\d+)/);
   if (!match) return null;
   return { atual: parseInt(match[1], 10), total: parseInt(match[2], 10) };
+}
+
+export function saoMesmoParcelamento(a: CompraCartao, b: CompraCartao): boolean {
+  if (a.banco !== b.banco) return false;
+  if (a.descricao.toLowerCase().trim() !== b.descricao.toLowerCase().trim()) return false;
+  const pA = parseParcela(a.parcelaInfo);
+  const pB = parseParcela(b.parcelaInfo);
+  if (!pA || !pB || pA.total !== pB.total) return false;
+  // Permite tolerância de centavos de arredondamento de parcelas
+  return Math.abs(a.valor - b.valor) < 2.0;
 }
 
 /**
@@ -316,6 +356,7 @@ export function diferencaMeses(mesOrigem: string, mesDestino: string): number {
  * Retorna todas as compras que incidem em um determinado mês alvo:
  * 1. Lançamentos com mesFatura === mesAlvo (fatura oficial ou compras manuais)
  * 2. Parcelas ativas de meses anteriores que ainda possuem parcelas a vencer em mesAlvo
+ * Ordena sempre da conta/compra mais nova para a mais antiga (ordem de data decrescente).
  */
 export function obterComprasDoMesComProjecao(
   mesAlvo: string,
@@ -324,9 +365,26 @@ export function obterComprasDoMesComProjecao(
   const comprasDiretas = compras.filter((c) => c.mesFatura === mesAlvo);
   const resultado: CompraCartao[] = [...comprasDiretas];
 
-  // Adiciona parcelas projetadas de meses anteriores que ainda estão ativas em mesAlvo
-  for (const c of compras) {
-    if (c.mesFatura >= mesAlvo || !c.parcelaInfo) continue;
+  const comprasAnteriores = compras.filter(
+    (c) => c.mesFatura < mesAlvo && c.parcelaInfo
+  );
+
+  // Agrupa as compras anteriores por série de parcelamento,
+  // mantendo APENAS a ocorrência mais recente antes de mesAlvo.
+  // Isso evita duplicar parcelamentos que foram registrados em múltiplos meses passados (ex: Nov e Dez).
+  const maisRecentes: CompraCartao[] = [];
+  for (const c of comprasAnteriores) {
+    const idx = maisRecentes.findIndex((existente) => saoMesmoParcelamento(c, existente));
+    if (idx === -1) {
+      maisRecentes.push(c);
+    } else {
+      if (c.mesFatura > maisRecentes[idx].mesFatura) {
+        maisRecentes[idx] = c;
+      }
+    }
+  }
+
+  for (const c of maisRecentes) {
     const pInfo = parseParcela(c.parcelaInfo);
     if (!pInfo) continue;
 
@@ -334,14 +392,9 @@ export function obterComprasDoMesComProjecao(
     const parcelaFutura = pInfo.atual + diff;
 
     if (parcelaFutura <= pInfo.total) {
-      // Verifica se já existe um lançamento correspondente já cadastrado diretamente no mês alvo
-      const jaExiste = comprasDiretas.some(
-        (cd) =>
-          cd.banco === c.banco &&
-          cd.descricao.toLowerCase().trim() === c.descricao.toLowerCase().trim()
-      );
+      const jaExisteDireta = comprasDiretas.some((cd) => saoMesmoParcelamento(c, cd));
 
-      if (!jaExiste) {
+      if (!jaExisteDireta) {
         resultado.push({
           id: `proj-${c.id}-${mesAlvo}`,
           mesFatura: mesAlvo,
@@ -358,6 +411,13 @@ export function obterComprasDoMesComProjecao(
       }
     }
   }
+
+  // Ordena sempre da data mais nova para a mais antiga (decrescente)
+  resultado.sort((a, b) => {
+    const diff = normalizarDataParaTimestamp(b.dataCompra, mesAlvo) - normalizarDataParaTimestamp(a.dataCompra, mesAlvo);
+    if (diff !== 0) return diff;
+    return b.valor - a.valor;
+  });
 
   return resultado;
 }
@@ -664,6 +724,7 @@ export function calcularProjecaoParcelasCartao(
         id: c.id,
         descricao: c.descricao,
         titularCartao: c.titularCartao,
+        dataCompra: c.dataCompra,
         parcelaAtual,
         totalParcelas,
         valor: c.valor,
@@ -673,6 +734,13 @@ export function calcularProjecaoParcelasCartao(
         valorPoupanca,
       });
     }
+
+    // Ordena as parcelas sempre da mais recente para a mais antiga (ordem de data decrescente)
+    parcelasMes.sort((a, b) => {
+      const diff = normalizarDataParaTimestamp(b.dataCompra, mesAlvo) - normalizarDataParaTimestamp(a.dataCompra, mesAlvo);
+      if (diff !== 0) return diff;
+      return b.valor - a.valor;
+    });
 
     const metadeDiv = totalDividido / 2;
     resultado.push({
