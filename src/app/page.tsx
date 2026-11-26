@@ -97,6 +97,13 @@ export default function DashboardPage() {
     setMesSelecionado(novoMes);
     setMesVisualizadoContas(novoMes);
     setMesVisualizadoProjecaoCartao(somarMeses(novoMes, 1));
+    const cc = contracheques[novoMes];
+    if (cc?.victorParams) {
+      setSalVictor(cc.victorParams);
+    }
+    if (cc?.leticiaParams) {
+      setSalLeticia(cc.leticiaParams);
+    }
   };
 
   // Botão de Confirmação do Mês: Confirma o fechamento do mês atual e avança projetando o próximo mês
@@ -280,10 +287,24 @@ export default function DashboardPage() {
       }));
       setPoupanca(limpos);
     }
-    if (parsed.salVictor) setSalVictor(parsed.salVictor);
-    if (parsed.salLeticia) setSalLeticia(parsed.salLeticia);
     if (parsed.comprasCartao && Array.isArray(parsed.comprasCartao)) setComprasCartao(parsed.comprasCartao);
-    if (parsed.contracheques) setContracheques(parsed.contracheques);
+    if (parsed.contracheques) {
+      setContracheques(parsed.contracheques);
+      const cc = parsed.contracheques[mesSelecionado];
+      if (cc?.victorParams) {
+        setSalVictor(cc.victorParams);
+      } else if (parsed.salVictor) {
+        setSalVictor(parsed.salVictor);
+      }
+      if (cc?.leticiaParams) {
+        setSalLeticia(cc.leticiaParams);
+      } else if (parsed.salLeticia) {
+        setSalLeticia(parsed.salLeticia);
+      }
+    } else {
+      if (parsed.salVictor) setSalVictor(parsed.salVictor);
+      if (parsed.salLeticia) setSalLeticia(parsed.salLeticia);
+    }
     if (parsed.faturasPagas) setFaturasPagas(parsed.faturasPagas);
     if (parsed.contasExcluidas && Array.isArray(parsed.contasExcluidas)) setContasExcluidas(parsed.contasExcluidas);
   };
@@ -477,29 +498,37 @@ export default function DashboardPage() {
   // Sincroniza parâmetros de simulação salvos para o mês específico selecionado
   useEffect(() => {
     const cc = contracheques[mesSelecionado];
-    if (cc?.victorParams) {
+    if (cc?.victorParams && JSON.stringify(cc.victorParams) !== JSON.stringify(salVictor)) {
       setSalVictor(cc.victorParams);
     }
-    if (cc?.leticiaParams) {
+    if (cc?.leticiaParams && JSON.stringify(cc.leticiaParams) !== JSON.stringify(salLeticia)) {
       setSalLeticia(cc.leticiaParams);
     }
-  }, [mesSelecionado]);
+  }, [mesSelecionado, contracheques]);
 
   const handleAtualizarSalVictor = (novo: ParametrosSalario) => {
     ultimaEdicaoLocalRef.current = Date.now();
     setSalVictor(novo);
+    const novoRes = calcularContrachequeRS(novo);
     setContracheques((prev) => {
       const atual = prev[mesSelecionado] || {
         victorConfirmado: false,
-        victorValorReal: resVictor.liquidoFolha,
+        victorValorReal: novoRes.liquidoFolha,
         leticiaConfirmada: false,
         leticiaValorReal: resLeticia.liquidoFolha,
       };
+      const folha = atual.victorValorReal > 0 ? atual.victorValorReal : novoRes.liquidoFolha;
+      const vr = novo.incluirValeRefeicao ? novoRes.valeRefeicaoIndenizatorio : 0;
+      const extras = atual.victorGanhosExtras || 0;
+      const novoTotalLiquido = folha + vr + novoRes.valorDiarias + extras;
       return {
         ...prev,
         [mesSelecionado]: {
           ...atual,
           victorParams: novo,
+          victorValorReal: folha,
+          victorSalarioLiquidoFinal: atual.victorConfirmado ? novoTotalLiquido : atual.victorSalarioLiquidoFinal,
+          victorDiferencaCC: folha - novoRes.liquidoFolha,
         },
       };
     });
@@ -508,18 +537,78 @@ export default function DashboardPage() {
   const handleAtualizarSalLeticia = (novo: ParametrosSalario) => {
     ultimaEdicaoLocalRef.current = Date.now();
     setSalLeticia(novo);
+    const novoRes = calcularContrachequeRS(novo);
     setContracheques((prev) => {
       const atual = prev[mesSelecionado] || {
         victorConfirmado: false,
         victorValorReal: resVictor.liquidoFolha,
         leticiaConfirmada: false,
-        leticiaValorReal: resLeticia.liquidoFolha,
+        leticiaValorReal: novoRes.liquidoFolha,
       };
+      const folha = atual.leticiaValorReal > 0 ? atual.leticiaValorReal : novoRes.liquidoFolha;
+      const vr = novo.incluirValeRefeicao ? novoRes.valeRefeicaoIndenizatorio : 0;
+      const extras = atual.leticiaGanhosExtras || 0;
+      const novoTotalLiquido = folha + vr + novoRes.valorDiarias + extras;
       return {
         ...prev,
         [mesSelecionado]: {
           ...atual,
           leticiaParams: novo,
+          leticiaValorReal: folha,
+          leticiaSalarioLiquidoFinal: atual.leticiaConfirmada ? novoTotalLiquido : atual.leticiaSalarioLiquidoFinal,
+          leticiaDiferencaCC: folha - novoRes.liquidoFolha,
+        },
+      };
+    });
+  };
+
+  const handleAtualizarValorFolhaVictor = (valor: number) => {
+    ultimaEdicaoLocalRef.current = Date.now();
+    setContracheques((prev) => {
+      const atual = prev[mesSelecionado] || {
+        victorConfirmado: false,
+        leticiaConfirmada: false,
+        leticiaValorReal: resLeticia.liquidoFolha,
+      };
+      const paramsAtuais = atual.victorParams || salVictor;
+      const res = calcularContrachequeRS(paramsAtuais);
+      const vr = paramsAtuais.incluirValeRefeicao ? res.valeRefeicaoIndenizatorio : 0;
+      const extras = atual.victorGanhosExtras || 0;
+      const novoFinal = valor + vr + res.valorDiarias + extras;
+      return {
+        ...prev,
+        [mesSelecionado]: {
+          ...atual,
+          victorValorReal: valor,
+          victorSalarioLiquidoFinal: novoFinal,
+          victorDiferencaCC: valor - res.liquidoFolha,
+          victorParams: paramsAtuais,
+        },
+      };
+    });
+  };
+
+  const handleAtualizarValorFolhaLeticia = (valor: number) => {
+    ultimaEdicaoLocalRef.current = Date.now();
+    setContracheques((prev) => {
+      const atual = prev[mesSelecionado] || {
+        victorConfirmado: false,
+        victorValorReal: resVictor.liquidoFolha,
+        leticiaConfirmada: false,
+      };
+      const paramsAtuais = atual.leticiaParams || salLeticia;
+      const res = calcularContrachequeRS(paramsAtuais);
+      const vr = paramsAtuais.incluirValeRefeicao ? res.valeRefeicaoIndenizatorio : 0;
+      const extras = atual.leticiaGanhosExtras || 0;
+      const novoFinal = valor + vr + res.valorDiarias + extras;
+      return {
+        ...prev,
+        [mesSelecionado]: {
+          ...atual,
+          leticiaValorReal: valor,
+          leticiaSalarioLiquidoFinal: novoFinal,
+          leticiaDiferencaCC: valor - res.liquidoFolha,
+          leticiaParams: paramsAtuais,
         },
       };
     });
@@ -654,6 +743,7 @@ export default function DashboardPage() {
 
   // Handlers para rendimentos extras fora do contracheque
   const adicionarExtraVictor = (descricao: string, valor: number) => {
+    ultimaEdicaoLocalRef.current = Date.now();
     setContracheques((prev) => {
       const atual = prev[mesSelecionado] || {
         victorConfirmado: false,
@@ -663,35 +753,43 @@ export default function DashboardPage() {
       };
       const extras = [...(atual.victorExtras || []), { id: Date.now().toString(), descricao, valor }];
       const totalExtras = extras.reduce((acc, it) => acc + it.valor, 0);
+      const vr = (atual.victorParams || salVictor).incluirValeRefeicao ? resVictor.valeRefeicaoIndenizatorio : 0;
+      const novoFinal = (atual.victorValorReal || resVictor.liquidoFolha) + vr + resVictor.valorDiarias + totalExtras;
       return {
         ...prev,
         [mesSelecionado]: {
           ...atual,
           victorExtras: extras,
           victorGanhosExtras: totalExtras,
+          victorSalarioLiquidoFinal: atual.victorConfirmado ? novoFinal : atual.victorSalarioLiquidoFinal,
         },
       };
     });
   };
 
   const removerExtraVictor = (id: string) => {
+    ultimaEdicaoLocalRef.current = Date.now();
     setContracheques((prev) => {
       const atual = prev[mesSelecionado];
       if (!atual) return prev;
       const extras = (atual.victorExtras || []).filter((it) => it.id !== id);
       const totalExtras = extras.reduce((acc, it) => acc + it.valor, 0);
+      const vr = (atual.victorParams || salVictor).incluirValeRefeicao ? resVictor.valeRefeicaoIndenizatorio : 0;
+      const novoFinal = (atual.victorValorReal || resVictor.liquidoFolha) + vr + resVictor.valorDiarias + totalExtras;
       return {
         ...prev,
         [mesSelecionado]: {
           ...atual,
           victorExtras: extras,
           victorGanhosExtras: totalExtras,
+          victorSalarioLiquidoFinal: atual.victorConfirmado ? novoFinal : atual.victorSalarioLiquidoFinal,
         },
       };
     });
   };
 
   const adicionarExtraLeticia = (descricao: string, valor: number) => {
+    ultimaEdicaoLocalRef.current = Date.now();
     setContracheques((prev) => {
       const atual = prev[mesSelecionado] || {
         victorConfirmado: false,
@@ -701,29 +799,36 @@ export default function DashboardPage() {
       };
       const extras = [...(atual.leticiaExtras || []), { id: Date.now().toString(), descricao, valor }];
       const totalExtras = extras.reduce((acc, it) => acc + it.valor, 0);
+      const vr = (atual.leticiaParams || salLeticia).incluirValeRefeicao ? resLeticia.valeRefeicaoIndenizatorio : 0;
+      const novoFinal = (atual.leticiaValorReal || resLeticia.liquidoFolha) + vr + resLeticia.valorDiarias + totalExtras;
       return {
         ...prev,
         [mesSelecionado]: {
           ...atual,
           leticiaExtras: extras,
           leticiaGanhosExtras: totalExtras,
+          leticiaSalarioLiquidoFinal: atual.leticiaConfirmada ? novoFinal : atual.leticiaSalarioLiquidoFinal,
         },
       };
     });
   };
 
   const removerExtraLeticia = (id: string) => {
+    ultimaEdicaoLocalRef.current = Date.now();
     setContracheques((prev) => {
       const atual = prev[mesSelecionado];
       if (!atual) return prev;
       const extras = (atual.leticiaExtras || []).filter((it) => it.id !== id);
       const totalExtras = extras.reduce((acc, it) => acc + it.valor, 0);
+      const vr = (atual.leticiaParams || salLeticia).incluirValeRefeicao ? resLeticia.valeRefeicaoIndenizatorio : 0;
+      const novoFinal = (atual.leticiaValorReal || resLeticia.liquidoFolha) + vr + resLeticia.valorDiarias + totalExtras;
       return {
         ...prev,
         [mesSelecionado]: {
           ...atual,
           leticiaExtras: extras,
           leticiaGanhosExtras: totalExtras,
+          leticiaSalarioLiquidoFinal: atual.leticiaConfirmada ? novoFinal : atual.leticiaSalarioLiquidoFinal,
         },
       };
     });
@@ -746,6 +851,7 @@ export default function DashboardPage() {
 
   const salvarModalSalario = (e: React.FormEvent) => {
     e.preventDefault();
+    ultimaEdicaoLocalRef.current = Date.now();
     const vVal = parseFloat(modalSalarioVictorVal.replace(",", "."));
     const lVal = parseFloat(modalSalarioLeticiaVal.replace(",", "."));
 
@@ -756,14 +862,28 @@ export default function DashboardPage() {
         leticiaConfirmada: false,
         leticiaValorReal: resLeticia.liquidoFolha,
       };
+      const vConfirmado = !isNaN(vVal) && vVal > 0 ? true : atual.victorConfirmado;
+      const vFolha = !isNaN(vVal) && vVal > 0 ? vVal : atual.victorValorReal;
+      const vVR = (atual.victorParams || salVictor).incluirValeRefeicao ? resVictor.valeRefeicaoIndenizatorio : 0;
+      const vExtras = atual.victorGanhosExtras || 0;
+      const vFinal = vFolha + vVR + resVictor.valorDiarias + vExtras;
+
+      const lConfirmada = !isNaN(lVal) && lVal > 0 ? true : atual.leticiaConfirmada;
+      const lFolha = !isNaN(lVal) && lVal > 0 ? lVal : atual.leticiaValorReal;
+      const lVR = (atual.leticiaParams || salLeticia).incluirValeRefeicao ? resLeticia.valeRefeicaoIndenizatorio : 0;
+      const lExtras = atual.leticiaGanhosExtras || 0;
+      const lFinal = lFolha + lVR + resLeticia.valorDiarias + lExtras;
+
       return {
         ...prev,
         [mesSelecionado]: {
           ...atual,
-          victorConfirmado: !isNaN(vVal) && vVal > 0 ? true : atual.victorConfirmado,
-          victorValorReal: !isNaN(vVal) && vVal > 0 ? vVal : atual.victorValorReal,
-          leticiaConfirmada: !isNaN(lVal) && lVal > 0 ? true : atual.leticiaConfirmada,
-          leticiaValorReal: !isNaN(lVal) && lVal > 0 ? lVal : atual.leticiaValorReal,
+          victorConfirmado: vConfirmado,
+          victorValorReal: vFolha,
+          victorSalarioLiquidoFinal: vFinal,
+          leticiaConfirmada: lConfirmada,
+          leticiaValorReal: lFolha,
+          leticiaSalarioLiquidoFinal: lFinal,
         },
       };
     });
@@ -2972,6 +3092,7 @@ export default function DashboardPage() {
                 cor="blue"
                 params={salVictor}
                 onChange={handleAtualizarSalVictor}
+                onValorFolhaChange={handleAtualizarValorFolhaVictor}
                 resultado={resVictor}
                 mesAnoLabel={formatarMesAnoLabel(mesSelecionado)}
                 mesAno={mesSelecionado}
@@ -2992,6 +3113,7 @@ export default function DashboardPage() {
                 cor="purple"
                 params={salLeticia}
                 onChange={handleAtualizarSalLeticia}
+                onValorFolhaChange={handleAtualizarValorFolhaLeticia}
                 resultado={resLeticia}
                 mesAnoLabel={formatarMesAnoLabel(mesSelecionado)}
                 mesAno={mesSelecionado}
@@ -5575,6 +5697,7 @@ function SalarioCard({
   cor,
   params,
   onChange,
+  onValorFolhaChange,
   resultado,
   mesAnoLabel,
   mesAno,
@@ -5592,6 +5715,7 @@ function SalarioCard({
   cor: "blue" | "purple";
   params: ParametrosSalario;
   onChange: (p: ParametrosSalario) => void;
+  onValorFolhaChange?: (valor: number) => void;
   resultado: ReturnType<typeof calcularContrachequeRS>;
   mesAnoLabel: string;
   mesAno: string;
@@ -5618,15 +5742,15 @@ function SalarioCard({
   const [editandoValor, setEditandoValor] = useState(false);
   const [feedbackSalvo, setFeedbackSalvo] = useState(false);
 
-  // Sincroniza o valor de folha quando o mês ou status de confirmação muda
+  // Sincroniza o valor de folha quando o mês ou valor salvo muda
   useEffect(() => {
-    if (contrachequeConfirmado && valorRealContracheque > 0) {
+    if (valorRealContracheque > 0) {
       setValorFolhaInput(valorRealContracheque.toFixed(2));
     } else {
       setValorFolhaInput(resultado.liquidoFolha.toFixed(2));
     }
     setEditandoValor(false);
-  }, [mesAno, contrachequeConfirmado, valorRealContracheque, resultado.liquidoFolha]);
+  }, [mesAno, valorRealContracheque, resultado.liquidoFolha]);
 
   const valorFolhaAtual = parseFloat(valorFolhaInput.replace(",", ".")) || resultado.liquidoFolha;
   const diferencaCC = valorFolhaAtual - resultado.liquidoFolha;
@@ -5946,7 +6070,14 @@ function SalarioCard({
               type="number"
               step="0.01"
               value={valorFolhaInput}
-              onChange={(e) => setValorFolhaInput(e.target.value)}
+              onChange={(e) => {
+                const raw = e.target.value;
+                setValorFolhaInput(raw);
+                const val = parseFloat(raw.replace(",", "."));
+                if (!isNaN(val) && val > 0 && onValorFolhaChange) {
+                  onValorFolhaChange(val);
+                }
+              }}
               placeholder={resultado.liquidoFolha.toFixed(2)}
               className="flex-1 border border-slate-300 rounded-lg px-3 py-1.5 text-xs font-bold bg-white focus:ring-2 focus:ring-purple-500 focus:outline-none"
             />
@@ -6149,11 +6280,19 @@ function SalarioCard({
               <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
-                  onClick={() => setEditandoValor(true)}
+                  onClick={executarSalvarEConfirmar}
+                  className="inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3.5 py-2 rounded-xl shadow-sm transition"
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  Salvar Alterações ({formatarMoeda(totalLiquidoCalculado)})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditandoValor(!editandoValor)}
                   className="inline-flex items-center gap-1.5 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold px-3 py-2 rounded-xl border border-slate-300 shadow-sm transition"
                 >
                   <Pencil className="w-3.5 h-3.5 text-blue-600" />
-                  Editar / Reajustar Valores
+                  Ajustar Detalhes
                 </button>
                 <button
                   type="button"
